@@ -5,18 +5,18 @@
 class Template
 {
     private $templateDir = "";
+    private $templateVars = array();
     private $HTML = "";
     private $rendered = "";
     private $ifs = array();
     private $block = "";
     private $blockLoop = "";
-    private $safeVars = array();
 
     public function __construct($template = false)
     {
         if (is_object($template)) {
             $this->templateDir = $template->getDir();
-            $this->safeVars = $template->getSafeVars();
+            $this->templateVars = $template->gettemplateVars();
             return $this;
         }
     }
@@ -38,6 +38,8 @@ class Template
             $path = $this->templateDir . $filePath;
             if (file_exists($path)) {
                 $this->HTML = preg_replace("/\r|\n/", "", file_get_contents($path));
+
+                
                 if (preg_match("/\<if\:/", $this->HTML)) {
                     if (preg_match_all("/(?:\<if\:)([a-zA-Z0-9_]+)(?:\>)/", $this->HTML, $matches)) {
                         unset($matches[0]);
@@ -61,7 +63,10 @@ class Template
     public function set($data)
     {
         foreach ($data as $field => $value) {
-            $this->HTML = str_replace("{{" . $field . "}}", $value, $this->HTML);
+            //$this->HTML = str_replace("<_template:$" . $field . "/>", $value, $this->HTML);
+            $regex = "/\<\_template\:\\$".$field."( )?(\/)?\>/";
+            $this->HTML = preg_replace($regex,$value,$this->HTML);
+            //$this->HTML = str_replace("<_template:$" . $field . "/>", $value, $this->HTML);
             if (array_key_exists($field, $this->ifs)) {
                 $this->ifs[$field] = $value;
             }
@@ -69,9 +74,9 @@ class Template
         return $this;
     }
 
-    public function addSafeVar($var, $value)
+    public function addTemplateVar($var, $value)
     {
-        $this->safeVars[$var] = $value;
+        $this->templateVars[$var] = $value;
     }
 
     public function getIf($condicao)
@@ -86,9 +91,9 @@ class Template
         return $this->templateDir;
     }
 
-    public function getSafeVars()
+    public function getTemplateVars()
     {
-        return $this->safeVars;
+        return $this->templateVars;
     }
 
     public function setIf()
@@ -104,14 +109,14 @@ class Template
         }
     }
 
-    public function block($name)
+    public function getBlock($name)
     {
     }
 
     public function register()
     {
         $this->setIf();
-        $this->set($this->safeVars);
+        $this->set($this->templateVars);
         $this->rendered = $this->HTML;
         return $this;
     }
@@ -119,6 +124,8 @@ class Template
     public function clear()
     {
         $this->rendered = preg_replace("/\{\{[0-9a-zA-Z]{1,}\}\}/", "", $this->rendered);
+        $this->rendered = preg_replace('/!\s+!/', ' ', $this->rendered);
+
         return $this;
     }
 
