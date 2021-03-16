@@ -6,7 +6,7 @@
  * CHANGELOG
  * 2021-02-15 -> Class created
  * 2021-03-15 -> Defined vars definition, loadFile function, ifs statements
- * 2021-03-16 -> Aplied the ifs and loadfiles replacements.
+ * 2021-03-16 -> Aplied the ifs and loadfiles replacements. Added block functions and statements for the template, including loop
  * */
 
 class Template
@@ -137,9 +137,8 @@ class Template
             $regex = "/(?:" . $comment . ")(.*?)(?:" . $comment . ")/";
             if (preg_match($regex, $this->HTML, $matches)) {
                 $class = get_class($this);
-                $block = new $class(array("html" => $matches[1], "dir" => $this->getDir()));
                 $this->templateCurrentBlock = array("code" => $code, "name" => $name, "loop" => false);
-                $this->templateBlockInstance = $block;
+                $this->templateBlockInstance = new $class(array("html" => $matches[1], "dir" => $this->getDir()));
             }
         }
         return $this;
@@ -151,25 +150,41 @@ class Template
         if ($block instanceof $this) {
             $blockInfo = $this->templateCurrentBlock;
             $comment = addslashes("<!-- block:$blockInfo[name] - $blockInfo[code] -->");
-            $regex = "/$comment(.*?)$comment/";
+            $regex = "/($comment).*?($comment)/";
             if (!$blockInfo['loop']) {
                 if (isset($blockInfo['rendered'])) {
-                    $this->HTML = preg_replace($regex, implode("", $blockInfo['rendered']), $this->HTML);
+                    $this->HTML = preg_replace($regex, "\\1" . implode("", $blockInfo['rendered']) . "\\2", $this->HTML);
                 } else {
-                    $this->HTML = preg_replace($regex, $block->rawRender(), $this->HTML);
+                    $this->HTML = preg_replace($regex, "\\1" . $block->rawRender() . "\\2", $this->HTML);
                 }
                 unset($this->templateCurrentBlock, $this->templateBlockInstance);
             } else {
-                $blockInfo['rendered'][] = $block->register()->rawRender();
+                $this->templateCurrentBlock['rendered'][] = $block->register()->rawRender();
             }
             return $this;
         }
         if (is_array($block)) {
             foreach ($block as $key => $value) {
-                $this->addVar($key, $value);
+                $this->templateBlockInstance->addVar($key, $value);
             }
-            return $this->register()->rawRender();
+            $class = get_class($this);
+            $new = new $class(array("vars" => $this->templateBlockInstance->getVars(), "dir" => $this->templateBlockInstance->getDir(), "html" => $this->templateBlockInstance->rawRender()));
+            $this->templateCurrentBlock['rendered'][] = $new->register()->rawRender();
+            return $this;
         }
+    }
+
+    /** This function removes the given block from the document */
+    public function unsetBlock($name)
+    {
+        $name = str_replace("$", "", $name);
+        $code = md5($name);
+        if (isset($this->templateBlocksKeys[$code])) {
+            $comment = "<!-- block:$name - $code -->";
+            $regex = "/(?:" . $comment . ")(.*?)(?:" . $comment . ")/";
+            $this->HTML = preg_replace($regex, "", $this->HTML);
+        }
+        return $this;
     }
 
     /** This will set the current block on loop */
