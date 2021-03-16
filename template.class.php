@@ -12,22 +12,24 @@
 class Template
 {
     private $templateIncludeRegex = "/(?:\<\_template\:loadFile\()([a-zA-Z0-9]{1,}\.html)(?:\)(?: )?(?:\/)?\/>)/"; // this regex loads other child template files inside a template files - it acts recursively
+
     private $templateVarRegex = "/\<\_template\:(\\$)?\\field( )?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will will be replaced on the setVar function
+    private $templateVars = array(); // array with defined vars to be set on the template. To define a var you can use: <_template:$var/> <_template:var/> or {{$var}} {{var}}
 
     private $templateIfRegex = "/(?:\<\_template\:if\()((?:(?:\\$)?[a-zA-Z0-9]+)(?:(?:\:)(?:\\$)?(?:[a-zA-Z0-9]+))?)(?:\)(?: )?(?:\/)?\>)/"; // this regex is used to prepare the conditions on the template ifs
     private $templatePrepareIfRegex = "/(?:\<\_template\:if\({condition}\)\>)(.*?)(?:\<\/\_template\:if\>)/"; // this regex also is used to prepare the conditions on the template ifs
+    private $templateIfsKeys = array(); // array with the "ifs" keys on the template file
+    private $templateIfs = array(); // array with the "ifs" keys on the template file
+
+    private $templateBlockRegex = "/(?:\<\_template\:block\()([a-zA-Z0-9]{1,})\)\>/"; // this regex will set the blocks inside the document
+    private $templatePrepareBlockRegex = "/(?:\<\_template\:block\({condition}\)\>)(.*?)(\<\/\_template\:block(?: )?\>)/"; // this regex will set the blocks HTML comments on the document
+    private $templateBlocksKeys = array(); // array where will be stored the block keys and names
+    private $templateCurrentBlock = null; // this var will store the code for the current block in use
+    private $templateBlockInstance = null; // this is the child block instance
 
     private $templateDir = ""; // this is the directory where the template files are stored
-    private $templateVars = array(); // array with defined vars to be set on the template. To define a var you can use: <_template:$var/> <_template:var/> or {{$var}} {{var}}
-
-    private $templateIfs = array(); // array with the "ifs" keys on the template file
-    private $templateIfsKeys = array(); // array with the "ifs" keys on the template file
-
-    private $templateBlock = "";
-    private $blockLoop = "";
 
     private $HTML = "";
-    private $rendered = "";
 
     /** Will set the basics needs for the class */
     public function __construct($template = false)
@@ -47,9 +49,12 @@ class Template
                     $this->addVar($var, $value);
                 }
             }
-        }
-        if (isset($template['file'])) {
-            $this->loadFile($template['file'], (isset($template['raw']) && $template['raw'] ? true : false));
+            if (isset($template['file'])) {
+                $this->loadFile($template['file'], (isset($template['raw']) && $template['raw'] ? true : false));
+            }
+            if (isset($template['html'])) {
+                $this->HTML = $template['html'];
+            }
         }
         return $this;
     }
@@ -91,16 +96,108 @@ class Template
     }
 
     /** Return the template vars */
-    private function getVars()
+    public function getVars()
     {
         return $this->templateVars;
     }
 
-    private function getBlock($name)
+    /** This will remove all template var regex ocurrences */
+    private function clearVars()
     {
+        $regex = str_replace("\\field", "[a-zA-Z0-9]{1,}", $this->templateVarRegex);
+        $this->HTML = preg_replace($regex, "", $this->HTML);
+        return $this;
     }
 
-    /** This will insert a HTML comment on every template if statement - replacing the <_template></_template> tags and using the comment instead of 'em */
+    /** This will insert a HTML comment on every template block statement - replacing the <_template></_template> tags and using the comment instead of tags */
+    private function prepareBlocks()
+    {
+        if (preg_match_all($this->templateBlockRegex, $this->HTML, $matches)) {
+            $matchedBlocks = array_reverse($matches[1]);
+            foreach ($matchedBlocks as $key => $block) {
+                $block = str_replace("$", "", $block);
+                $code = md5($block);
+                $comment = "<!-- block:$block - $code -->";
+                $regex = str_replace("{condition}", addslashes($block), $this->templatePrepareBlockRegex);
+                $replace = $comment . "\\1" . $comment;
+                $this->HTML = preg_replace($regex, $replace, $this->HTML);
+                $this->templateBlocksKeys[$code] = $block;
+            }
+            unset($matchedBlocks, $block, $code, $comment, $regex, $replace);
+        }
+    }
+
+    /** This function returns a new Template instance, with the block HTML */
+    public function getBlock($name)
+    {
+        $name = str_replace("$", "", $name);
+        $code = md5($name);
+        if (isset($this->templateBlocksKeys[$code])) {
+            $comment = "<!-- block:$name - $code -->";
+            $regex = "/(?:" . $comment . ")(.*?)(?:" . $comment . ")/";
+            if (preg_match($regex, $this->HTML, $matches)) {
+                $class = get_class($this);
+                $block = new $class(array("html" => $matches[1], "dir" => $this->getDir()));
+                $this->templateCurrentBlock = array("code" => $code, "name" => $name, "loop" => false);
+                $this->templateBlockInstance = $block;
+            }
+        }
+        return $this;
+    }
+
+    /** This function will set the block on the HTML */
+    public function setBlock($block)
+    {
+        if ($block instanceof $this) {
+            $blockInfo = $this->templateCurrentBlock;
+            $comment = addslashes("<!-- block:$blockInfo[name] - $blockInfo[code] -->");
+            $regex = "/$comment(.*?)$comment/";
+            if (!$blockInfo['loop']) {
+                if (isset($blockInfo['rendered'])) {
+                    $this->HTML = preg_replace($regex, implode("", $blockInfo['rendered']), $this->HTML);
+                } else {
+                    $this->HTML = preg_replace($regex, $block->rawRender(), $this->HTML);
+                }
+                unset($this->templateCurrentBlock, $this->templateBlockInstance);
+            } else {
+                $blockInfo['rendered'][] = $block->register()->rawRender();
+            }
+            return $this;
+        }
+        if (is_array($block)) {
+            foreach ($block as $key => $value) {
+                $this->addVar($key, $value);
+            }
+            return $this->register()->rawRender();
+        }
+    }
+
+    /** This will set the current block on loop */
+    public function setBlockLoop()
+    {
+        $this->templateCurrentBlock['loop'] = true;
+    }
+
+    /** This will set the current block on loop */
+    public function unsetBlockLoop()
+    {
+        $this->templateCurrentBlock['loop'] = false;
+        $this->setBlock($this->templateBlockInstance);
+    }
+
+
+    /** This will remove the blocks HTML comments from the string */
+    private function clearBlocks()
+    {
+        foreach ($this->templateBlocksKeys as $code => $block) {
+            $comment = addslashes("<!-- block:$block - $code -->");
+            $regex = "/" . $comment . "/";
+            $this->HTML = preg_replace($regex, "", $this->HTML);
+        }
+        return $this;
+    }
+
+    /** This will insert a HTML comment on every template if statement - replacing the <_template></_template> tags and using the comment instead of tags */
     private function prepareIfs()
     {
         if (preg_match_all($this->templateIfRegex, $this->HTML, $matches)) {
@@ -169,7 +266,7 @@ class Template
         return $this;
     }
 
-    /** This function removes he if HTML comments that the template inserted on the page */
+    /** This function removes the "if HTML comments" that the template inserted on the page */
     private function clearIfs()
     {
         foreach ($this->templateIfsKeys as $code => $condition) {
@@ -177,12 +274,18 @@ class Template
                 if (!$this->templateIfs[$code]['condition']['status']) {
                     $comment = addslashes("<!-- $condition - $code -->");
                     $this->HTML = preg_replace("/" . $comment . ".*?" . $comment . "/", "", $this->HTML);
+                } else {
+                    $comment = addslashes("<!-- $condition - $code -->");
+                    $this->HTML = preg_replace("/" . addslashes($comment) . "/", "", $this->HTML);
                 }
             } else {
                 foreach ($condition['childConditions'] as $childCode => $childCondition) {
                     if (!$this->templateIfs[$code]['childConditions'][$childCode]['status'] || !$this->templateIfs[$code]['condition']['status']) {
                         $comment = "<!-- $condition[condition]:$childCondition - $code:$childCode -->";
                         $this->HTML = preg_replace("/" . addslashes($comment) . "(.*?)" . addslashes($comment) . "/", "", $this->HTML);
+                    } else {
+                        $comment = "<!-- $condition[condition]:$childCondition - $code:$childCode -->";
+                        $this->HTML = preg_replace("/" . addslashes($comment) . "/", "", $this->HTML);
                     }
                 }
             }
@@ -208,7 +311,7 @@ class Template
                     return $this->rawRender();
                 }
             }
-            $this->prepareIfs();
+            $this->prepareIfs()->prepareBlocks();
             return $this;
         } else {
             return false;
@@ -218,17 +321,14 @@ class Template
     /** This function removes all template HTML tags on the document */
     private function clear()
     {
-        $this->clearIfs();
+        $this->clearVars()->clearIfs()->clearBlocks();
         //$this->rendered = preg_replace("/\{\{[0-9a-zA-Z]{1,}\}\}/", "", $this->rendered);
-        $regex = str_replace("\\field", "[a-zA-Z0-9]{1,}", $this->templateVarRegex);
-        $this->HTML = preg_replace($regex, "", $this->HTML);
         //$this->rendered = preg_replace('/!\s+!/', ' ', $this->rendered);
-
         return $this;
     }
 
     /** This function sets all template vars on the document */
-    private function register()
+    public function register()
     {
         $this->setVar($this->templateVars);
         return $this;
