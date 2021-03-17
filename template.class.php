@@ -11,6 +11,10 @@
 
 class Template
 {
+    private $templateDir = ""; // this is the directory where the template files are stored
+
+    private $HTML = "";
+
     private $templateIncludeRegex = "/(?:\<\_template\:loadFile\()([a-zA-Z0-9]{1,}\.html)(?:\)(?: )?(?:\/)?\/>)/"; // this regex loads other child template files inside a template files - it acts recursively
 
     private $templateVarRegex = "/\<\_template\:(\\$)?\\field( )?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will will be replaced on the setVar function
@@ -27,9 +31,8 @@ class Template
     private $templateCurrentBlock = null; // this var will store the code for the current block in use
     private $templateBlockInstance = null; // this is the child block instance
 
-    private $templateDir = ""; // this is the directory where the template files are stored
-
-    private $HTML = "";
+    //<_template:func.limpaHtml({{title}}) />
+    private $templateFunctionRegex = "/(?:\<\_template\:function\.)(.*?)(?:\()(.*?)\)(?:(?: )?(?:\/)?\>)/"; // this regex is used to check if the HTML has any function calls
 
     /** Will set the basics needs for the class */
     public function __construct($template = false)
@@ -69,6 +72,7 @@ class Template
         } else {
             $this->templateDir = $dir;
         }
+        return $this;
     }
 
     /** This will "replace" the var code on the template layout to the right value */
@@ -109,108 +113,6 @@ class Template
         return $this;
     }
 
-    /** This will insert a HTML comment on every template block statement - replacing the <_template></_template> tags and using the comment instead of tags */
-    private function prepareBlocks()
-    {
-        if (preg_match_all($this->templateBlockRegex, $this->HTML, $matches)) {
-            $matchedBlocks = array_reverse($matches[1]);
-            foreach ($matchedBlocks as $key => $block) {
-                $block = str_replace("$", "", $block);
-                $code = md5($block);
-                $comment = "<!-- block:$block - $code -->";
-                $regex = str_replace("{condition}", addslashes($block), $this->templatePrepareBlockRegex);
-                $replace = $comment . "\\1" . $comment;
-                $this->HTML = preg_replace($regex, $replace, $this->HTML);
-                $this->templateBlocksKeys[$code] = $block;
-            }
-            unset($matchedBlocks, $block, $code, $comment, $regex, $replace);
-        }
-    }
-
-    /** This function returns a new Template instance, with the block HTML */
-    public function getBlock($name)
-    {
-        $name = str_replace("$", "", $name);
-        $code = md5($name);
-        if (isset($this->templateBlocksKeys[$code])) {
-            $comment = "<!-- block:$name - $code -->";
-            $regex = "/(?:" . $comment . ")(.*?)(?:" . $comment . ")/";
-            if (preg_match($regex, $this->HTML, $matches)) {
-                $class = get_class($this);
-                $this->templateCurrentBlock = array("code" => $code, "name" => $name, "loop" => false);
-                $this->templateBlockInstance = new $class(array("html" => $matches[1], "dir" => $this->getDir()));
-            }
-        }
-        return $this;
-    }
-
-    /** This function will set the block on the HTML */
-    public function setBlock($block)
-    {
-        if ($block instanceof $this) {
-            $blockInfo = $this->templateCurrentBlock;
-            $comment = addslashes("<!-- block:$blockInfo[name] - $blockInfo[code] -->");
-            $regex = "/($comment).*?($comment)/";
-            if (!$blockInfo['loop']) {
-                if (isset($blockInfo['rendered'])) {
-                    $this->HTML = preg_replace($regex, "\\1" . implode("", $blockInfo['rendered']) . "\\2", $this->HTML);
-                } else {
-                    $this->HTML = preg_replace($regex, "\\1" . $block->rawRender() . "\\2", $this->HTML);
-                }
-                unset($this->templateCurrentBlock, $this->templateBlockInstance);
-            } else {
-                $this->templateCurrentBlock['rendered'][] = $block->register()->rawRender();
-            }
-            return $this;
-        }
-        if (is_array($block)) {
-            foreach ($block as $key => $value) {
-                $this->templateBlockInstance->addVar($key, $value);
-            }
-            $class = get_class($this);
-            $new = new $class(array("vars" => $this->templateBlockInstance->getVars(), "dir" => $this->templateBlockInstance->getDir(), "html" => $this->templateBlockInstance->rawRender()));
-            $this->templateCurrentBlock['rendered'][] = $new->register()->rawRender();
-            return $this;
-        }
-    }
-
-    /** This function removes the given block from the document */
-    public function unsetBlock($name)
-    {
-        $name = str_replace("$", "", $name);
-        $code = md5($name);
-        if (isset($this->templateBlocksKeys[$code])) {
-            $comment = "<!-- block:$name - $code -->";
-            $regex = "/(?:" . $comment . ")(.*?)(?:" . $comment . ")/";
-            $this->HTML = preg_replace($regex, "", $this->HTML);
-        }
-        return $this;
-    }
-
-    /** This will set the current block on loop */
-    public function setBlockLoop()
-    {
-        $this->templateCurrentBlock['loop'] = true;
-    }
-
-    /** This will set the current block on loop */
-    public function unsetBlockLoop()
-    {
-        $this->templateCurrentBlock['loop'] = false;
-        $this->setBlock($this->templateBlockInstance);
-    }
-
-
-    /** This will remove the blocks HTML comments from the string */
-    private function clearBlocks()
-    {
-        foreach ($this->templateBlocksKeys as $code => $block) {
-            $comment = addslashes("<!-- block:$block - $code -->");
-            $regex = "/" . $comment . "/";
-            $this->HTML = preg_replace($regex, "", $this->HTML);
-        }
-        return $this;
-    }
 
     /** This will insert a HTML comment on every template if statement - replacing the <_template></_template> tags and using the comment instead of tags */
     private function prepareIfs()
@@ -308,6 +210,122 @@ class Template
         return $this;
     }
 
+    /** This will insert a HTML comment on every template block statement - replacing the <_template></_template> tags and using the comment instead of tags */
+    private function prepareBlocks()
+    {
+        if (preg_match_all($this->templateBlockRegex, $this->HTML, $matches)) {
+            $matchedBlocks = array_reverse($matches[1]);
+            foreach ($matchedBlocks as $key => $block) {
+                $block = str_replace("$", "", $block);
+                $code = md5($block);
+                $comment = "<!-- block:$block - $code -->";
+                $regex = str_replace("{condition}", addslashes($block), $this->templatePrepareBlockRegex);
+                $replace = $comment . "\\1" . $comment;
+                $this->HTML = preg_replace($regex, $replace, $this->HTML);
+                $this->templateBlocksKeys[$code] = $block;
+            }
+            unset($matchedBlocks, $block, $code, $comment, $regex, $replace);
+        }
+        return $this;
+    }
+
+    /** This function returns a new Template instance, with the block HTML */
+    public function getBlock($name)
+    {
+        $name = str_replace("$", "", $name);
+        $code = md5($name);
+        if (isset($this->templateBlocksKeys[$code])) {
+            $comment = "<!-- block:$name - $code -->";
+            $regex = "/(?:" . $comment . ")(.*?)(?:" . $comment . ")/";
+            if (preg_match($regex, $this->HTML, $matches)) {
+                $class = get_class($this);
+                $this->templateCurrentBlock = array("code" => $code, "name" => $name, "loop" => false);
+                $this->templateBlockInstance = new $class(array("html" => $matches[1], "dir" => $this->getDir()));
+            }
+        }
+        return $this;
+    }
+
+    /** This function will set the block on the HTML */
+    public function setBlock($block)
+    {
+        if ($block instanceof $this) {
+            $blockInfo = $this->templateCurrentBlock;
+            $comment = addslashes("<!-- block:$blockInfo[name] - $blockInfo[code] -->");
+            $regex = "/($comment).*?($comment)/";
+            if (!$blockInfo['loop']) {
+                if (isset($blockInfo['rendered'])) {
+                    $this->HTML = preg_replace($regex, "\\1" . implode("", $blockInfo['rendered']) . "\\2", $this->HTML);
+                } else {
+                    $this->HTML = preg_replace($regex, "\\1" . $block->rawRender() . "\\2", $this->HTML);
+                }
+                unset($this->templateCurrentBlock, $this->templateBlockInstance);
+            } else {
+                $this->templateCurrentBlock['rendered'][] = $block->register()->rawRender();
+            }
+            return $this;
+        }
+        if (is_array($block)) {
+            foreach ($block as $key => $value) {
+                $this->templateBlockInstance->addVar($key, $value);
+            }
+            $class = get_class($this);
+            $new = new $class(array("vars" => $this->templateBlockInstance->getVars(), "dir" => $this->templateBlockInstance->getDir(), "html" => $this->templateBlockInstance->rawRender()));
+            $this->templateCurrentBlock['rendered'][] = $new->register()->rawRender();
+            return $this;
+        }
+    }
+
+    /** This function removes the given block from the document */
+    public function unsetBlock($name)
+    {
+        $name = str_replace("$", "", $name);
+        $code = md5($name);
+        if (isset($this->templateBlocksKeys[$code])) {
+            $comment = "<!-- block:$name - $code -->";
+            $regex = "/(?:" . $comment . ")(.*?)(?:" . $comment . ")/";
+            $this->HTML = preg_replace($regex, "", $this->HTML);
+        }
+        return $this;
+    }
+
+    /** This will set the current block on loop */
+    public function setBlockLoop()
+    {
+        $this->templateCurrentBlock['loop'] = true;
+        return $this;
+    }
+
+    /** This will set the current block on loop */
+    public function unsetBlockLoop()
+    {
+        $this->templateCurrentBlock['loop'] = false;
+        $this->setBlock($this->templateBlockInstance);
+        return $this;
+    }
+
+    /** This will remove the blocks HTML comments from the string */
+    private function clearBlocks()
+    {
+        foreach ($this->templateBlocksKeys as $code => $block) {
+            $comment = addslashes("<!-- block:$block - $code -->");
+            $regex = "/" . $comment . "/";
+            $this->HTML = preg_replace($regex, "", $this->HTML);
+        }
+        return $this;
+    }
+
+    /** This function will apply the function result on the HTML */
+    private function setFunction()
+    {
+        if (preg_match_all($this->templateFunctionRegex, $this->HTML, $matches)) {
+            echo "<pre>";
+            print_r($matches);
+            echo "</pre>";
+            exit("chegou no setFunction");
+        }
+    }
+
     /** This method gets the contents of the given file. If $raw == true then it will return the raw HTML code */
     public function loadFile($filePath, $raw = false)
     {
@@ -345,7 +363,7 @@ class Template
     /** This function sets all template vars on the document */
     public function register()
     {
-        $this->setVar($this->templateVars);
+        $this->setVar($this->templateVars)->setFunction();
         return $this;
     }
 
