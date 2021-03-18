@@ -31,8 +31,8 @@ class Template
     private $templateCurrentBlock = null; // this var will store the code for the current block in use
     private $templateBlockInstance = null; // this is the child block instance
 
-    //<_template:func.limpaHtml({{title}}) />
     private $templateFunctionRegex = "/(?:\<\_template\:function\.)(.*?)(?:\()(.*?)\)(?:(?: )?(?:\/)?\>)/"; // this regex is used to check if the HTML has any function calls
+    private $templateFunctionReplaceRegex = "/(?:\<\_template\:function\.)(?:.*?)(?:\()(.*?)\)(?:(?: )?(?:\/)?\>)/";
 
     /** Will set the basics needs for the class */
     public function __construct($template = false)
@@ -75,6 +75,13 @@ class Template
         return $this;
     }
 
+    /** This will add a $var to $this->templateVars */
+    private function addVar($var, $value)
+    {
+        $this->templateVars[$var] = $value;
+        return $this;
+    }
+
     /** This will "replace" the var code on the template layout to the right value */
     public function setVar($data)
     {
@@ -83,13 +90,6 @@ class Template
             $this->HTML = preg_replace($regex, $value, $this->HTML);
         }
         unset($regex);
-        return $this;
-    }
-
-    /** This will add a $var to $this->templateVars */
-    private function addVar($var, $value)
-    {
-        $this->templateVars[$var] = $value;
         return $this;
     }
 
@@ -319,10 +319,32 @@ class Template
     private function setFunction()
     {
         if (preg_match_all($this->templateFunctionRegex, $this->HTML, $matches)) {
-            echo "<pre>";
-            print_r($matches);
-            echo "</pre>";
-            exit("chegou no setFunction");
+            unset($matches[0]);
+            $functions = $matches[1];
+            $arguments = $matches[2];
+            foreach ($functions as $key => $function) {
+                $function = trim($function);
+                $argument = trim($arguments[$key]);
+                $isVar = function ($argument) {
+                    if (preg_match("/\{\{(.*)?\}\}/", $argument, $matches)) {
+                        return $matches[1];
+                    } else {
+                        return false;
+                    }
+                };
+                try {
+                    if (function_exists($function)) {
+                        $result = call_user_func($function, $argument);
+                        $var = $isVar($argument);
+                        if ($var && $result) {
+                            $this->HTML = preg_replace($this->templateFunctionReplaceRegex, "\\1", $this->HTML);
+                            $this->setVar(array($var => $result));
+                        }
+                    }
+                } catch (Exception $error) {
+                    return $error;
+                }
+            }
         }
     }
 
