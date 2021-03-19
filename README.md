@@ -1,2 +1,2 @@
-# PHP_TemplateClass
+# PHP Template Class
 A PHP class for templates
