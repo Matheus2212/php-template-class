@@ -11,8 +11,9 @@
 
 class Template
 {
+    private $templateInit = null;
+    private $templateInitialMemory = null;
     private $templateDir = ""; // this is the directory where the template files are stored
-
     private $HTML = "";
 
     private $templateIncludeRegex = "/(?:\<\_template\:loadFile\()([a-zA-Z0-9]{1,}\.html)(?:\)(?: )?(?:\/)?\/>)/"; // this regex loads other child template files inside a template files - it acts recursively
@@ -37,6 +38,8 @@ class Template
     /** Will set the basics needs for the class */
     public function __construct($template = false)
     {
+        $this->templateInit = microtime(true);
+        $this->templateInitialMemory = memory_get_usage();
         if (is_object($template)) {
             $this->setDir($template->getDir());
             foreach ($template->getVars() as $var => $value) {
@@ -348,37 +351,51 @@ class Template
         }
     }
 
+    /** This function concatenates code on the current template instance */
+    public function code($code)
+    {
+        if (isset($this->templateBlockInstance) && $this->templateBlockInstance !== null) {
+            $this->templateBlockInstance->HTML .= $code;
+        } else {
+            $this->HTML .= $code;
+        }
+        return $this;
+    }
+
     /** This method gets the contents of the given file. If $raw == true then it will return the raw HTML code */
     public function loadFile($filePath, $raw = false)
     {
-        if ($this->templateDir !== "") {
-            $path = $this->templateDir . $filePath;
-            if (file_exists($path)) {
-                $this->HTML = preg_replace("/\r|\n/", "", file_get_contents($path));
-                if (preg_match($this->templateIncludeRegex, $this->HTML, $matches)) {
-                    $fileName = $matches[1];
-                    $class = get_class($this);
-                    $childNode = new $class(array("dir" => $this->getDir(), "file" => $fileName, "raw" => true));
-                    $this->HTML = preg_replace("/\<\_template\:loadFile\(" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $this->HTML);
-                    unset($childNode);
-                }
-                if ($raw) {
-                    return $this->rawRender();
-                }
-            }
-            $this->prepareIfs()->prepareBlocks();
-            return $this;
+        $instance = null;
+        if ($this->templateBlockInstance !== null) {
+            $instance = $this->templateBlockInstance;
         } else {
-            return false;
+            $instance = $this;
         }
+        if ($instance->templateDir == "") {
+            $instance->templateDir = './';
+        }
+        $path = $instance->templateDir . $filePath;
+        if (file_exists($path)) {
+            $instance->HTML = preg_replace("/|\r|\n|[ ]{2,}/", "", file_get_contents($path));
+            if (preg_match($instance->templateIncludeRegex, $instance->HTML, $matches)) {
+                $fileName = $matches[1];
+                $class = get_class($instance);
+                $childNode = new $class(array("dir" => $instance->getDir(), "file" => $fileName, "raw" => true));
+                $instance->HTML = preg_replace("/\<\_template\:loadFile\(" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $instance->HTML);
+                unset($childNode);
+            }
+            if ($raw) {
+                return $instance->rawRender();
+            }
+        }
+        $instance->prepareIfs()->prepareBlocks();
+        return $instance;
     }
 
     /** This function removes all template HTML tags on the document */
     private function clear()
     {
         $this->clearVars()->clearIfs()->clearBlocks();
-        //$this->rendered = preg_replace("/\{\{[0-9a-zA-Z]{1,}\}\}/", "", $this->rendered);
-        //$this->rendered = preg_replace('/!\s+!/', ' ', $this->rendered);
         return $this;
     }
 
@@ -399,6 +416,7 @@ class Template
     public function render()
     {
         $this->register()->clear();
+        $this->code("\n<!-- \n Template data\n Rendered: " . (microtime(true) - $this->templateInit) . " seconds;\n Initial Memory Use: " . $this->templateInitialMemory . ";\n Memory Peak: " . memory_get_peak_usage() . "\n -->");
         return $this->HTML;
     }
 }
