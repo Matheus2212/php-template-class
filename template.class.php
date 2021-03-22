@@ -1,12 +1,15 @@
 <?php
 
 /** 
- * PHP Template class (work in progress) 
+ * PHP Template class
  * 
  * CHANGELOG
- * 2021-02-15 -> Class created
- * 2021-03-15 -> Defined vars definition, loadFile function, ifs statements
- * 2021-03-16 -> Aplied the ifs and loadfiles replacements. Added block functions and statements for the template, including loop
+ * 2021-02-15 -> Class created.
+ * 2021-03-15 -> Defined vars definition, loadFile function, ifs statements.
+ * 2021-03-16 -> Aplied the ifs and loadfiles replacements. Added block functions and statements for the template, including loop.
+ * 2021-03-18 -> Aplied the setFunction statementes, to call functions using a Template syntax on the HTML.
+ * 2021-03-19 -> Improved template rendering methods, removing excess of empty spaces between tags. Added the "code" method, which concatenates the given HTML code with the current template/block HTML. Added template data about rendering and memory usage.
+ * 2021-03-22 -> Improved recursive loadFile method to add support with differents DIRECTORY_SEPARATORs. Now it will include the file wheter it is a Windows server os a GNU server.
  * */
 
 class Template
@@ -16,7 +19,7 @@ class Template
     private $templateDir = ""; // this is the directory where the template files are stored
     private $HTML = "";
 
-    private $templateIncludeRegex = "/(?:\<\_template\:loadFile\()([a-zA-Z0-9]{1,}\.html)(?:\)(?: )?(?:\/)?\/>)/"; // this regex loads other child template files inside a template files - it acts recursively
+    private $templateIncludeRegex = "/(?:\<\_template\:loadFile\()(.*?\.html)(?:\)(?: )?(?:\/)?\/>)/"; // this regex loads other child template files inside a template files - it acts recursively
 
     private $templateVarRegex = "/\<\_template\:(\\$)?\\field( )?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will will be replaced on the setVar function
     private $templateVars = array(); // array with defined vars to be set on the template. To define a var you can use: <_template:$var/> <_template:var/> or {{$var}} {{var}}
@@ -68,6 +71,8 @@ class Template
     /** This sets the directory where are the template layout/part files */
     public function setDir($dir)
     {
+        $dir = preg_replace("/\/{1,}|\\{1,}/", "|", $dir);
+        $dir = implode(DIRECTORY_SEPARATOR, explode("|", $dir));
         $lastChar = substr($dir, -1);
         if ($lastChar !== DIRECTORY_SEPARATOR) {
             $this->templateDir = $dir . DIRECTORY_SEPARATOR;
@@ -122,7 +127,7 @@ class Template
     {
         if (preg_match_all($this->templateIfRegex, $this->HTML, $matches)) {
             $matchedConditions = $matches[1];
-            foreach ($matchedConditions as $key => $condition) {
+            foreach ($matchedConditions as $condition) {
                 $condition = str_replace("$", "", $condition);
                 $condition = explode(":", $condition);
                 $code = md5($condition[0]);
@@ -375,14 +380,23 @@ class Template
             $instance->templateDir = './';
         }
         $path = $instance->templateDir . $filePath;
+        //$path = preg_replace("/[\\\|\/]{1,}/", "/", $instance->templateDir . $filePath);
         if (file_exists($path)) {
             $instance->HTML = preg_replace("/|\r|\n|[ ]{2,}/", "", file_get_contents($path));
             if (preg_match($instance->templateIncludeRegex, $instance->HTML, $matches)) {
-                $fileName = $matches[1];
+                $fileName = implode(DIRECTORY_SEPARATOR, explode("|", preg_replace("/\/{1,}|\\{1,}/", "|", $matches[1])));
                 $class = get_class($instance);
-                $childNode = new $class(array("dir" => $instance->getDir(), "file" => $fileName, "raw" => true));
-                $instance->HTML = preg_replace("/\<\_template\:loadFile\(" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $instance->HTML);
-                unset($childNode);
+                $data = array(
+                    "dir" => $this->getDir(),
+                    "file" => $fileName,
+                    "raw" => true,
+                );
+                $childNode = new $class($data);
+                unset($data);
+                $fileName = explode(DIRECTORY_SEPARATOR, $fileName);
+                $fileName = $fileName[count($fileName) - 1];
+                $instance->HTML = preg_replace("/\<\_template\:loadFile\(.*?" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $instance->HTML);
+                unset($childNode, $aux, $fileName);
             }
             if ($raw) {
                 return $instance->rawRender();
