@@ -1,7 +1,7 @@
 <?php
 
 /** 
- * PHP Template class
+ * PHP Template class - developed with love by Matheus Felipe Marques
  * 
  * CHANGELOG
  * 2021-02-15 -> Class created.
@@ -10,6 +10,7 @@
  * 2021-03-18 -> Aplied the setFunction statementes, to call functions using a Template syntax on the HTML.
  * 2021-03-19 -> Improved template rendering methods, removing excess of empty spaces between tags. Added the "code" method, which concatenates the given HTML code with the current template/block HTML. Added template data about rendering and memory usage.
  * 2021-03-22 -> Improved recursive loadFile method to add support with differents DIRECTORY_SEPARATORs. Now it will include the file wheter it is a Windows server os a GNU server.
+ * 2021-03-23 -> Improved prepareIfs method to allow underscores (_) on the if definition. Added the prepareDocument method, to remove linebreaks and extra empty spaces on methods that sets code on the HTML. Improved setBlock Method. Improved loadFile method.
  * */
 
 class Template
@@ -19,17 +20,19 @@ class Template
     private $templateDir = ""; // this is the directory where the template files are stored
     private $HTML = "";
 
+    private $templatePrepareDocumentRegex = "/|\r|\n|[ ]{2,}/"; // this regex will remove all line-breaks and extra empty spaces on the document. 
+
     private $templateIncludeRegex = "/(?:\<\_template\:loadFile\()(.*?\.html)(?:\)(?: )?(?:\/)?\/>)/"; // this regex loads other child template files inside a template files - it acts recursively
 
     private $templateVarRegex = "/\<\_template\:(\\$)?\\field( )?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will will be replaced on the setVar function
     private $templateVars = array(); // array with defined vars to be set on the template. To define a var you can use: <_template:$var/> <_template:var/> or {{$var}} {{var}}
 
-    private $templateIfRegex = "/(?:\<\_template\:if\()((?:(?:\\$)?[a-zA-Z0-9]+)(?:(?:\:)(?:\\$)?(?:[a-zA-Z0-9]+))?)(?:\)(?: )?(?:\/)?\>)/"; // this regex is used to prepare the conditions on the template ifs
+    private $templateIfRegex = "/(?:\<\_template\:if\()((?:(?:\\$)?[a-zA-Z0-9_]+)(?:(?:\:)(?:\\$)?(?:[a-zA-Z0-9_]+))?)(?:\)(?: )?(?:\/)?\>)/"; // this regex is used to prepare the conditions on the template ifs
     private $templatePrepareIfRegex = "/(?:\<\_template\:if\({condition}\)\>)(.*?)(?:\<\/\_template\:if\>)/"; // this regex also is used to prepare the conditions on the template ifs
     private $templateIfsKeys = array(); // array with the "ifs" keys on the template file
     private $templateIfs = array(); // array with the "ifs" keys on the template file
 
-    private $templateBlockRegex = "/(?:\<\_template\:block\()([a-zA-Z0-9]{1,})\)\>/"; // this regex will set the blocks inside the document
+    private $templateBlockRegex = "/(?:\<\_template\:block\()([a-zA-Z0-9_+]{1,})\)\>/"; // this regex will set the blocks inside the document
     private $templatePrepareBlockRegex = "/(?:\<\_template\:block\({condition}\)\>)(.*?)(\<\/\_template\:block(?: )?\>)/"; // this regex will set the blocks HTML comments on the document
     private $templateBlocksKeys = array(); // array where will be stored the block keys and names
     private $templateCurrentBlock = null; // this var will store the code for the current block in use
@@ -98,6 +101,7 @@ class Template
             $this->HTML = preg_replace($regex, $value, $this->HTML);
         }
         unset($regex);
+        $this->prepareDocument();
         return $this;
     }
 
@@ -121,6 +125,20 @@ class Template
         return $this;
     }
 
+
+    /** This function removes extra white spaces and line breaks on the HTML */
+    private function prepareDocument()
+    {
+        if ($this->templateBlockInstance !== null) {
+            $this->templateBlockInstance->HTML = preg_replace($this->templatePrepareDocumentRegex, "", $this->templateBlockInstance->HTML);
+            $this->templateBlockInstance->prepareIfs()->prepareBlocks();
+            return $this->templateBlockInstance;
+        } else {
+            $this->HTML = preg_replace($this->templatePrepareDocumentRegex, "", $this->HTML);
+            $this->prepareIfs()->prepareBlocks();
+            return $this;
+        }
+    }
 
     /** This will insert a HTML comment on every template if statement - replacing the <_template></_template> tags and using the comment instead of tags */
     private function prepareIfs()
@@ -242,6 +260,7 @@ class Template
     {
         $name = str_replace("$", "", $name);
         $code = md5($name);
+        $this->prepareDocument();
         if (isset($this->templateBlocksKeys[$code])) {
             $comment = "<!-- block:$name - $code -->";
             $regex = "/(?:" . $comment . ")(.*?)(?:" . $comment . ")/";
@@ -249,14 +268,21 @@ class Template
                 $class = get_class($this);
                 $this->templateCurrentBlock = array("code" => $code, "name" => $name, "loop" => false);
                 $this->templateBlockInstance = new $class(array("html" => $matches[1], "dir" => $this->getDir()));
+                return $this;
+            } else {
+                return false;
             }
+        } else {
+            return false;
         }
-        return $this;
     }
 
     /** This function will set the block on the HTML */
-    public function setBlock($block)
+    public function setBlock($block = false)
     {
+        if (!$block) {
+            $block = $this->templateBlockInstance;
+        }
         if ($block instanceof $this) {
             $blockInfo = $this->templateCurrentBlock;
             $comment = addslashes("<!-- block:$blockInfo[name] - $blockInfo[code] -->");
@@ -361,29 +387,61 @@ class Template
     {
         if (isset($this->templateBlockInstance) && $this->templateBlockInstance !== null) {
             $this->templateBlockInstance->HTML .= $code;
+            $this->templateBlockInstance->prepareDocument();
         } else {
             $this->HTML .= $code;
+            $this->prepareDocument();
         }
         return $this;
     }
 
     /** This method gets the contents of the given file. If $raw == true then it will return the raw HTML code */
-    public function loadFile($filePath, $raw = false)
+    public function loadFile($filePath = false, $raw = false)
     {
-        $instance = null;
-        if ($this->templateBlockInstance !== null) {
-            $instance = $this->templateBlockInstance;
+        if ($filePath) {
+            $filePath = implode(DIRECTORY_SEPARATOR, explode("|", preg_replace("/\/{1,}|\\{1,}/", "|", $filePath)));
+            $instance = null;
+            if ($this->templateBlockInstance !== null) {
+                $instance = $this->templateBlockInstance;
+            } else {
+                $instance = $this;
+            }
+            if ($instance->templateDir == "") {
+                $instance->templateDir = './';
+            }
+            $path = $instance->templateDir . $filePath;
+            if (file_exists($path)) {
+                $instance->HTML = file_get_contents($path);
+                $instance->prepareDocument();
+                if (preg_match($this->templateIncludeRegex, $instance->HTML, $matches)) {
+                    $fileName = implode(DIRECTORY_SEPARATOR, explode("|", preg_replace("/\/{1,}|\\{1,}/", "|", $matches[1])));
+                    $class = get_class($instance);
+                    $data = array(
+                        "dir" => $this->getDir(),
+                        "file" => $fileName,
+                        "raw" => true,
+                    );
+                    $childNode = new $class($data);
+                    unset($data);
+                    $fileName = explode(DIRECTORY_SEPARATOR, $fileName);
+                    $fileName = $fileName[count($fileName) - 1];
+                    $instance->HTML = preg_replace("/\<\_template\:loadFile\(.*?" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $instance->HTML);
+                    unset($childNode, $aux, $fileName);
+                }
+                if ($raw) {
+                    return $instance->rawRender();
+                }
+            }
+            $instance->prepareDocument();
+            return $instance;
         } else {
-            $instance = $this;
-        }
-        if ($instance->templateDir == "") {
-            $instance->templateDir = './';
-        }
-        $path = $instance->templateDir . $filePath;
-        //$path = preg_replace("/[\\\|\/]{1,}/", "/", $instance->templateDir . $filePath);
-        if (file_exists($path)) {
-            $instance->HTML = preg_replace("/|\r|\n|[ ]{2,}/", "", file_get_contents($path));
-            if (preg_match($instance->templateIncludeRegex, $instance->HTML, $matches)) {
+            $instance = null;
+            if ($this->templateBlockInstance !== null) {
+                $instance = $this->templateBlockInstance;
+            } else {
+                $instance = $this;
+            }
+            if (preg_match($this->templateIncludeRegex, $instance->HTML, $matches)) {
                 $fileName = implode(DIRECTORY_SEPARATOR, explode("|", preg_replace("/\/{1,}|\\{1,}/", "|", $matches[1])));
                 $class = get_class($instance);
                 $data = array(
@@ -401,9 +459,9 @@ class Template
             if ($raw) {
                 return $instance->rawRender();
             }
+            $instance->prepareDocument();
+            return $instance;
         }
-        $instance->prepareIfs()->prepareBlocks();
-        return $instance;
     }
 
     /** This function removes all template HTML tags on the document */
@@ -430,7 +488,7 @@ class Template
     public function render()
     {
         $this->register()->clear();
-        $this->code("\n<!-- \n Template data\n Rendered: " . (microtime(true) - $this->templateInit) . " seconds;\n Initial Memory Use: " . $this->templateInitialMemory . ";\n Memory Peak: " . memory_get_peak_usage() . "\n -->");
+        $this->HTML .= "\n<!-- \n Template Class Data\n Rendered: " . (microtime(true) - $this->templateInit) . " seconds;\n Initial Memory Use: " . $this->templateInitialMemory . ";\n Memory Peak: " . memory_get_peak_usage() . "\n -->";
         return $this->HTML;
     }
 }
