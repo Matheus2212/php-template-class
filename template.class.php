@@ -10,7 +10,7 @@
  * 2021-03-18 -> Aplied the setFunction statementes, to call functions using a Template syntax on the HTML.
  * 2021-03-19 -> Improved template rendering methods, removing excess of empty spaces between tags. Added the "code" method, which concatenates the given HTML code with the current template/block HTML. Added template data about rendering and memory usage.
  * 2021-03-22 -> Improved recursive loadFile method to add support with differents DIRECTORY_SEPARATORs. Now it will include the file wheter it is a Windows server os a GNU server.
- * 2021-03-23 -> Improved prepareIfs method to allow underscores (_) on the if definition. Added the prepareDocument method, to remove linebreaks and extra empty spaces on methods that sets code on the HTML. Improved setBlock Method. Improved loadFile method. Improved recursively <_template:block()> parameters
+ * 2021-03-23 -> Improved prepareIfs method to allow underscores (_) on the if definition. Added the prepareDocument method, to remove linebreaks and extra empty spaces on methods that sets code on the HTML. Improved setBlock Method. Improved loadFile method to be able to load multiple files on same HTML string. Improved recursively <_template:block()> parameters
  * */
 
 class Template
@@ -259,6 +259,9 @@ class Template
     /** This function returns a new Template instance, with the block HTML */
     public function getBlock($name)
     {
+        echo "<pre>";
+        print_r($this->templateBlocksKeys);
+        echo "</pre>";
         $name = str_replace("$", "", $name);
         $code = md5($name);
         $this->prepareDocument();
@@ -419,27 +422,29 @@ class Template
             $path = $instance->templateDir . $filePath;
             if (file_exists($path)) {
                 $instance->HTML = file_get_contents($path);
-                $instance->prepareDocument();
-                if (preg_match($this->templateIncludeRegex, $instance->HTML, $matches)) {
-                    $fileName = implode(DIRECTORY_SEPARATOR, explode("|", preg_replace("/\/{1,}|\\{1,}/", "|", $matches[1])));
+                if (preg_match_all($this->templateIncludeRegex, $instance->HTML, $matches)) {
+                    $matches = $matches[1];
                     $class = get_class($instance);
-                    $data = array(
-                        "dir" => $this->getDir(),
-                        "file" => $fileName,
-                        "raw" => true,
-                    );
-                    $childNode = new $class($data);
-                    unset($data);
-                    $fileName = explode(DIRECTORY_SEPARATOR, $fileName);
-                    $fileName = $fileName[count($fileName) - 1];
-                    $instance->HTML = preg_replace("/\<\_template\:loadFile\(.*?" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $instance->HTML);
-                    unset($childNode, $aux, $fileName);
+                    foreach ($matches as $match) {
+                        $fileName = implode(DIRECTORY_SEPARATOR, explode("|", preg_replace("/\/{1,}|\\{1,}/", "|", $match)));
+                        $data = array(
+                            "dir" => $this->getDir(),
+                            "file" => $fileName,
+                            "raw" => true,
+                        );
+                        $childNode = new $class($data);
+                        unset($data);
+                        $fileName = explode(DIRECTORY_SEPARATOR, $fileName);
+                        $fileName = $fileName[count($fileName) - 1];
+                        $instance->HTML = preg_replace("/\<\_template\:loadFile\(.*?" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $instance->HTML);
+                        unset($childNode, $aux, $fileName);
+                    }
                 }
                 if ($raw) {
                     return $instance->rawRender();
                 }
             }
-            $instance->prepareDocument();
+            $this->prepareDocument();
             return $instance;
         } else {
             $instance = null;
