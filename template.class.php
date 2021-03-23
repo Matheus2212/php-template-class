@@ -10,7 +10,7 @@
  * 2021-03-18 -> Aplied the setFunction statementes, to call functions using a Template syntax on the HTML.
  * 2021-03-19 -> Improved template rendering methods, removing excess of empty spaces between tags. Added the "code" method, which concatenates the given HTML code with the current template/block HTML. Added template data about rendering and memory usage.
  * 2021-03-22 -> Improved recursive loadFile method to add support with differents DIRECTORY_SEPARATORs. Now it will include the file wheter it is a Windows server os a GNU server.
- * 2021-03-23 -> Improved prepareIfs method to allow underscores (_) on the if definition. Added the prepareDocument method, to remove linebreaks and extra empty spaces on methods that sets code on the HTML. Improved setBlock Method. Improved loadFile method.
+ * 2021-03-23 -> Improved prepareIfs method to allow underscores (_) on the if definition. Added the prepareDocument method, to remove linebreaks and extra empty spaces on methods that sets code on the HTML. Improved setBlock Method. Improved loadFile method. Improved recursively <_template:block()> parameters
  * */
 
 class Template
@@ -212,6 +212,7 @@ class Template
     /** This function removes the "if HTML comments" that the template inserted on the page */
     private function clearIfs()
     {
+        $this->prepareIfs();
         foreach ($this->templateIfsKeys as $code => $condition) {
             if (is_string($condition)) {
                 if (!$this->templateIfs[$code]['condition']['status']) {
@@ -293,9 +294,11 @@ class Template
                 } else {
                     $this->HTML = preg_replace($regex, "\\1" . $block->rawRender() . "\\2", $this->HTML);
                 }
-                unset($this->templateCurrentBlock, $this->templateBlockInstance);
+                $this->templateBlocksKeys = array_merge($this->templateBlocksKeys, $this->templateBlockInstance->templateBlocksKeys);
+                unset($this->templateCurrentBlock);
+                $this->templateBlockInstance = null;
             } else {
-                $this->templateCurrentBlock['rendered'][] = $block->register()->rawRender();
+                $this->templateCurrentBlock['rendered'][] = $block->rawRender();
             }
             return $this;
         }
@@ -306,6 +309,7 @@ class Template
             $class = get_class($this);
             $new = new $class(array("vars" => $this->templateBlockInstance->getVars(), "dir" => $this->templateBlockInstance->getDir(), "html" => $this->templateBlockInstance->rawRender()));
             $this->templateCurrentBlock['rendered'][] = $new->register()->rawRender();
+            //$this->templateBlockInstance->HTML = $this->templateCurrentBlock['HTML'];
             return $this;
         }
     }
@@ -327,6 +331,7 @@ class Template
     public function setBlockLoop()
     {
         $this->templateCurrentBlock['loop'] = true;
+        $this->templateCurrentBlock['HTML'] = $this->templateBlockInstance->HTML;
         return $this;
     }
 
@@ -335,12 +340,14 @@ class Template
     {
         $this->templateCurrentBlock['loop'] = false;
         $this->setBlock($this->templateBlockInstance);
+        $this->prepareDocument();
         return $this;
     }
 
     /** This will remove the blocks HTML comments from the string */
     private function clearBlocks()
     {
+        $this->prepareBlocks();
         foreach ($this->templateBlocksKeys as $code => $block) {
             $comment = addslashes("<!-- block:$block - $code -->");
             $regex = "/" . $comment . "/";
