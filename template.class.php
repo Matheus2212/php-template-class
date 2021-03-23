@@ -259,9 +259,6 @@ class Template
     /** This function returns a new Template instance, with the block HTML */
     public function getBlock($name)
     {
-        echo "<pre>";
-        print_r($this->templateBlocksKeys);
-        echo "</pre>";
         $name = str_replace("$", "", $name);
         $code = md5($name);
         $this->prepareDocument();
