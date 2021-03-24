@@ -74,8 +74,7 @@ class Template
     /** This sets the directory where are the template layout/part files */
     public function setDir($dir)
     {
-        $dir = preg_replace("/\/{1,}|\\{1,}/", "|", $dir);
-        $dir = implode(DIRECTORY_SEPARATOR, explode("|", $dir));
+        $dir = preg_replace("/\/{1,}|\\{1,}/", DIRECTORY_SEPARATOR, $dir);
         $lastChar = substr($dir, -1);
         if ($lastChar !== DIRECTORY_SEPARATOR) {
             $this->templateDir = $dir . DIRECTORY_SEPARATOR;
@@ -406,7 +405,7 @@ class Template
     public function loadFile($filePath = false, $raw = false)
     {
         if ($filePath) {
-            $filePath = implode(DIRECTORY_SEPARATOR, explode("|", preg_replace("/\/{1,}|\\{1,}/", "|", $filePath)));
+            $filePath = preg_replace("/\/{1,}|\\{1,}/", DIRECTORY_SEPARATOR, $filePath);
             $instance = null;
             if ($this->templateBlockInstance !== null) {
                 $instance = $this->templateBlockInstance;
@@ -423,7 +422,7 @@ class Template
                     $matches = $matches[1];
                     $class = get_class($instance);
                     foreach ($matches as $match) {
-                        $fileName = implode(DIRECTORY_SEPARATOR, explode("|", preg_replace("/\/{1,}|\\{1,}/", "|", $match)));
+                        $fileName = preg_replace("/\/{1,}|\\{1,}/", DIRECTORY_SEPARATOR, $match);
                         $data = array(
                             "dir" => $this->getDir(),
                             "file" => $fileName,
