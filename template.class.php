@@ -5,12 +5,13 @@
  * 
  * CHANGELOG
  * 2021-02-15 -> Class created.
- * 2021-03-15 -> Defined vars definition, loadFile function, ifs statements.
- * 2021-03-16 -> Aplied the ifs and loadfiles replacements. Added block functions and statements for the template, including loop.
- * 2021-03-18 -> Aplied the setFunction statementes, to call functions using a Template syntax on the HTML.
+ * 2021-03-15 -> Defined vars definition, loadFile function, if statements.
+ * 2021-03-16 -> Applied the ifs and loadfile replacements. Added block functions and statements for the template, including loop.
+ * 2021-03-18 -> Applied the setFunction statements, to call functions using a Template syntax on the HTML.
  * 2021-03-19 -> Improved template rendering methods, removing excess of empty spaces between tags. Added the "code" method, which concatenates the given HTML code with the current template/block HTML. Added template data about rendering and memory usage.
  * 2021-03-22 -> Improved recursive loadFile method to add support with differents DIRECTORY_SEPARATORs. Now it will include the file wheter it is a Windows server os a GNU server.
  * 2021-03-23 -> Improved prepareIfs method to allow underscores (_) on the if definition. Added the prepareDocument method, to remove linebreaks and extra empty spaces on methods that sets code on the HTML. Improved setBlock Method. Improved loadFile method to be able to load multiple files on same HTML string. Improved recursively <_template:block()> parameters
+ * 2021-06-06 -> Added $echo to render method, to make the template do the 'echo' of the HTML result
  * */
 
 class Template
@@ -493,10 +494,13 @@ class Template
     }
 
     /** This function returns the HTML with the template rendering */
-    public function render()
+    public function render($echo = false)
     {
         $this->register()->clear();
         $this->HTML .= "\n<!-- \n Template Class Data\n Rendered: " . (microtime(true) - $this->templateInit) . " seconds;\n Initial Memory Use: " . $this->templateInitialMemory . ";\n Memory Peak: " . memory_get_peak_usage() . "\n -->";
+        if ($echo) {
+            echo $this->HTML;
+        }
         return $this->HTML;
     }
 }
