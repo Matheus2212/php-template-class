@@ -4,24 +4,25 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{titulo}}</title>
+    <title>{{title}}</title> <!-- One method for var reference -->
   </head>
   <body>
-    {{body}}
-<br>
-<br>
-<div>        
-        <_template:block(loop)>
-                Aqui deverá entrar em loop
-                <br>
-                {{i}}
-<br><br>
-<_template:loadFile(pice.html)/>
-{{outro_arquivo}}
 
-        </_template:block>
-</div>
+    {{$nav}} <!-- Another method for var reference -->
 
+    <_template:body_var/> <!-- Another method for var reference -->
+
+    <_template:$footer_var/> <!-- Another method for var reference -->
+    
+    <_template:block(loop)>
+      
+    </_template:block>
+
+    <_template:function.time()/>
+    
+    <_template:function.existo()/>
+
+    <_template:function.ucwords(title)/>
 
   </body>
 </html>

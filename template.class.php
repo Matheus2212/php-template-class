@@ -12,6 +12,8 @@
  * 2021-03-22 -> Improved recursive loadFile method to add support with differents DIRECTORY_SEPARATORs. Now it will include the file wheter it is a Windows server os a GNU server.
  * 2021-03-23 -> Improved prepareIfs method to allow underscores (_) on the if definition. Added the prepareDocument method, to remove linebreaks and extra empty spaces on methods that sets code on the HTML. Improved setBlock Method. Improved loadFile method to be able to load multiple files on same HTML string. Improved recursively <_template:block()> parameters
  * 2021-06-06 -> Added $echo to render method, to make the template do the 'echo' of the HTML result
+ * 2021-08-13 -> Refactored all block operations. Now it can support multiples blocks
+ * 2021-08-14 -> Refactored function operations
  * */
 
 class Template
@@ -25,7 +27,7 @@ class Template
 
     private $templateIncludeRegex = "/(?:\<\_template\:loadFile\()(.*?\.html)(?:\)(?: )?(?:\/)?\/>)/"; // this regex loads other child template files inside a template files - it acts recursively
 
-    private $templateVarRegex = "/\<\_template\:(\\$)?\\field( )?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will will be replaced on the setVar function
+    private $templateVarRegex = "/\<\_template\:(\\$)?\\field(?: )?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will be replaced on the setVar function
     private $templateVars = array(); // array with defined vars to be set on the template. To define a var you can use: <_template:$var/> <_template:var/> or {{$var}} {{var}}
 
     private $templateIfRegex = "/(?:\<\_template\:if\()((?:(?:\\$)?[a-zA-Z0-9_]+)(?:(?:\:)(?:\\$)?(?:[a-zA-Z0-9_]+))?)(?:\)(?: )?(?:\/)?\>)/"; // this regex is used to prepare the conditions on the template ifs
@@ -36,11 +38,12 @@ class Template
     private $templateBlockRegex = "/(?:\<\_template\:block\()([a-zA-Z0-9_+]{1,})\)\>/"; // this regex will set the blocks inside the document
     private $templatePrepareBlockRegex = "/(?:\<\_template\:block\({condition}\)\>)(.*?)(\<\/\_template\:block(?: )?\>)/"; // this regex will set the blocks HTML comments on the document
     private $templateBlocksKeys = array(); // array where will be stored the block keys and names
+    private $templateBlockInfos = array(); // this array stores data about de current block
     private $templateCurrentBlock = null; // this var will store the code for the current block in use
-    private $templateBlockInstance = null; // this is the child block instance
+    private $templateBlockLoop = null; // this var defines if the current instance is a block and if it is in loop
 
     private $templateFunctionRegex = "/(?:\<\_template\:function\.)(.*?)(?:\()(.*?)\)(?:(?: )?(?:\/)?\>)/"; // this regex is used to check if the HTML has any function calls
-    private $templateFunctionReplaceRegex = "/(?:\<\_template\:function\.)(?:.*?)(?:\()(.*?)\)(?:(?: )?(?:\/)?\>)/";
+    private $templateFunctionReplaceRegex = "/(?:\<\_template\:function\.)(?:\\field?)(?:\()?(.*?)(?:\))?(?:(?: )?(?:\/)?\>)/";
 
     /** Will set the basics needs for the class */
     public function __construct($template = false)
@@ -61,6 +64,9 @@ class Template
                 foreach ($template['vars'] as $var => $value) {
                     $this->addVar($var, $value);
                 }
+            }
+            if (isset($template['blockInfo'])) {
+                $this->templateBlockInfos = $template['blockInfo'];
             }
             if (isset($template['file'])) {
                 $this->loadFile($template['file'], (isset($template['raw']) && $template['raw'] ? true : false));
@@ -126,18 +132,12 @@ class Template
     }
 
 
-    /** This function removes extra white spaces and line breaks on the HTML */
+    /** This method removes extra white spaces and line breaks on the HTML */
     private function prepareDocument()
     {
-        if ($this->templateBlockInstance !== null) {
-            $this->templateBlockInstance->HTML = preg_replace($this->templatePrepareDocumentRegex, "", $this->templateBlockInstance->HTML);
-            $this->templateBlockInstance->prepareIfs()->prepareBlocks();
-            return $this->templateBlockInstance;
-        } else {
-            $this->HTML = preg_replace($this->templatePrepareDocumentRegex, "", $this->HTML);
-            $this->prepareIfs()->prepareBlocks();
-            return $this;
-        }
+        $this->HTML = preg_replace($this->templatePrepareDocumentRegex, "", $this->HTML);
+        $this->prepareIfs()->prepareBlocks();
+        return $this;
     }
 
     /** This will insert a HTML comment on every template if statement - replacing the <_template></_template> tags and using the comment instead of tags */
@@ -191,7 +191,7 @@ class Template
         return $this;
     }
 
-    /** This function sets if a condition is true or false */
+    /** This method sets if a condition is true or false */
     public function setIf($condition, $bool = false)
     {
         $condition = explode(":", str_replace("$", "", $condition));
@@ -209,7 +209,7 @@ class Template
         return $this;
     }
 
-    /** This function removes the "if HTML comments" that the template inserted on the page */
+    /** This method removes the "if HTML comments" that the template inserted on the page */
     private function clearIfs()
     {
         $this->prepareIfs();
@@ -256,7 +256,7 @@ class Template
         return $this;
     }
 
-    /** This function returns a new Template instance, with the block HTML */
+    /** This method returns a new Template instance, with the block HTML */
     public function getBlock($name)
     {
         $name = str_replace("$", "", $name);
@@ -267,9 +267,7 @@ class Template
             $regex = "/(?:" . $comment . ")(.*?)(?:" . $comment . ")/";
             if (preg_match($regex, $this->HTML, $matches)) {
                 $class = get_class($this);
-                $this->templateCurrentBlock = array("code" => $code, "name" => $name, "loop" => false);
-                $this->templateBlockInstance = new $class(array("html" => $matches[1], "dir" => $this->getDir()));
-                return $this;
+                return new $class(array("html" => $matches[1], "dir" => $this->getDir(), "vars" => $this->getVars(), "blockInfo" => array("name" => $name, "code" => $code)));
             } else {
                 return false;
             }
@@ -278,43 +276,35 @@ class Template
         }
     }
 
-    /** This function will set the block on the HTML */
+    /** This method will set the block on the HTML */
     public function setBlock($block = false)
     {
-        if (!$block) {
-            $block = $this->templateBlockInstance;
-        }
         if ($block instanceof $this) {
-            $blockInfo = $this->templateCurrentBlock;
+            $blockInfo = $block->templateBlockInfos;
             $comment = addslashes("<!-- block:$blockInfo[name] - $blockInfo[code] -->");
             $regex = "/($comment).*?($comment)/";
-            if (!$blockInfo['loop']) {
-                if (isset($blockInfo['rendered'])) {
-                    $this->HTML = preg_replace($regex, "\\1" . implode("", $blockInfo['rendered']) . "\\2", $this->HTML);
-                } else {
-                    $this->HTML = preg_replace($regex, "\\1" . $block->rawRender() . "\\2", $this->HTML);
-                }
-                $this->templateBlocksKeys = array_merge($this->templateBlocksKeys, $this->templateBlockInstance->templateBlocksKeys);
-                unset($this->templateCurrentBlock);
-                $this->templateBlockInstance = null;
+            $block->unsetBlockLoop();
+            if (isset($block->templateCurrentBlock['rendered'])) {
+                $this->HTML = preg_replace($regex, "\\1" . implode("", $block->templateCurrentBlock['rendered']) . "\\2", $this->HTML);
             } else {
-                $this->templateCurrentBlock['rendered'][] = $block->rawRender();
+                $this->HTML = preg_replace($regex, "\\1" . $block->rawRender() . "\\2", $this->HTML);
             }
+            $this->prepareDocument();
+            unset($block);
             return $this;
         }
         if (is_array($block)) {
             foreach ($block as $key => $value) {
-                $this->templateBlockInstance->addVar($key, $value);
+                $this->addVar($key, $value);
             }
             $class = get_class($this);
-            $new = new $class(array("vars" => $this->templateBlockInstance->getVars(), "dir" => $this->templateBlockInstance->getDir(), "html" => $this->templateBlockInstance->rawRender()));
+            $new = new $class(array("vars" => $this->getVars(), "dir" => $this->getDir(), "html" => $this->rawRender()));
             $this->templateCurrentBlock['rendered'][] = $new->register()->rawRender();
-            //$this->templateBlockInstance->HTML = $this->templateCurrentBlock['HTML'];
             return $this;
         }
     }
 
-    /** This function removes the given block from the document */
+    /** This method removes the given block from the document */
     public function unsetBlock($name)
     {
         $name = str_replace("$", "", $name);
@@ -330,16 +320,15 @@ class Template
     /** This will set the current block on loop */
     public function setBlockLoop()
     {
-        $this->templateCurrentBlock['loop'] = true;
-        $this->templateCurrentBlock['HTML'] = $this->templateBlockInstance->HTML;
+        $this->templateBlockLoop = true;
+        $this->templateCurrentBlock["HTML"] = $this->HTML;
         return $this;
     }
 
     /** This will set the current block on loop */
     public function unsetBlockLoop()
     {
-        $this->templateCurrentBlock['loop'] = false;
-        $this->setBlock($this->templateBlockInstance);
+        $this->templateBlockLoop = false;
         $this->prepareDocument();
         return $this;
     }
@@ -356,7 +345,7 @@ class Template
         return $this;
     }
 
-    /** This function will apply the function result on the HTML */
+    /** This method will apply the function result on the HTML */
     private function setFunction()
     {
         if (preg_match_all($this->templateFunctionRegex, $this->HTML, $matches)) {
@@ -366,21 +355,40 @@ class Template
             foreach ($functions as $key => $function) {
                 $function = trim($function);
                 $argument = trim($arguments[$key]);
-                $isVar = function ($argument) {
-                    if (preg_match("/\{\{(.*)?\}\}/", $argument, $matches)) {
-                        return $matches[1];
-                    } else {
+                if ($argument !== "") {
+                    $isVar = function ($argument) {
+                        $regex = str_replace("\\field", addSlashes($argument), $this->templateVarRegex);
+                        if (preg_match($regex, $argument, $matches) || array_key_exists($argument, $this->templateVars)) {
+                            if (isset($matches[1])) {
+                                return $matches[1];
+                            }
+                            if (isset($this->templateVars[$argument])) {
+                                return $this->templateVars[$argument];
+                            }
+                        }
                         return false;
-                    }
-                };
+                    };
+                }
                 try {
                     if (function_exists($function)) {
-                        $result = call_user_func($function, $argument);
-                        $var = $isVar($argument);
-                        if ($var && $result) {
-                            $this->HTML = preg_replace($this->templateFunctionReplaceRegex, "\\1", $this->HTML);
-                            $this->setVar(array($var => $result));
+                        if ($argument !== "") {
+                            $var = $isVar($argument);
+                            $result = call_user_func($function, $var);
+                        } else {
+                            $result = call_user_func($function);
                         }
+                        if ($result) {
+                            //$this->HTML = preg_replace($this->templateFunctionReplaceRegex, "\\1", $this->HTML);
+                            $regex = str_replace("\\field", $function, $this->templateFunctionReplaceRegex);
+                            $this->HTML = preg_replace($regex, $result, $this->HTML);
+                            if (isset($var)) {
+                                $this->setVar(array($var => $result));
+                            }
+                        }
+                    } else {
+                        $regex = str_replace("\\field", $function, $this->templateFunctionReplaceRegex);
+                        $function = addSlashes(str_replace(array("<", ">"), array("&lt;", "&gt;"), $function));
+                        $this->HTML = preg_replace($regex, "<!-- the function `$function` doesn't exists -->", $this->HTML);
                     }
                 } catch (Exception $error) {
                     return $error;
@@ -389,16 +397,11 @@ class Template
         }
     }
 
-    /** This function concatenates code on the current template instance */
+    /** This method concatenates code on the current template instance */
     public function code($code)
     {
-        if (isset($this->templateBlockInstance) && $this->templateBlockInstance !== null) {
-            $this->templateBlockInstance->HTML .= $code;
-            $this->templateBlockInstance->prepareDocument();
-        } else {
-            $this->HTML .= $code;
-            $this->prepareDocument();
-        }
+        $this->HTML .= $code;
+        $this->prepareDocument();
         return $this;
     }
 
@@ -407,12 +410,7 @@ class Template
     {
         if ($filePath) {
             $filePath = preg_replace("/\/{1,}|\\{1,}/", DIRECTORY_SEPARATOR, $filePath);
-            $instance = null;
-            if ($this->templateBlockInstance !== null) {
-                $instance = $this->templateBlockInstance;
-            } else {
-                $instance = $this;
-            }
+            $instance = $this;
             if ($instance->templateDir == "") {
                 $instance->templateDir = './';
             }
@@ -444,12 +442,7 @@ class Template
             $this->prepareDocument();
             return $instance;
         } else {
-            $instance = null;
-            if ($this->templateBlockInstance !== null) {
-                $instance = $this->templateBlockInstance;
-            } else {
-                $instance = $this;
-            }
+            $instance = $this;
             if (preg_match($this->templateIncludeRegex, $instance->HTML, $matches)) {
                 $fileName = implode(DIRECTORY_SEPARATOR, explode("|", preg_replace("/\/{1,}|\\{1,}/", "|", $matches[1])));
                 $class = get_class($instance);
@@ -473,27 +466,27 @@ class Template
         }
     }
 
-    /** This function removes all template HTML tags on the document */
+    /** This method removes all template HTML tags on the document */
     private function clear()
     {
         $this->clearVars()->clearIfs()->clearBlocks();
         return $this;
     }
 
-    /** This function sets all template vars on the document */
+    /** This method sets all template vars on the document */
     public function register()
     {
         $this->setVar($this->templateVars)->setFunction();
         return $this;
     }
 
-    /** This function returns the HTML without any render by the template side */
+    /** This method returns the HTML without any render by the template side */
     public function rawRender()
     {
         return $this->HTML;
     }
 
-    /** This function returns the HTML with the template rendering */
+    /** This method returns the HTML with the template rendering */
     public function render($echo = false)
     {
         $this->register()->clear();
