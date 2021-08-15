@@ -8,12 +8,13 @@
  * 2021-03-15 -> Defined vars definition, loadFile function, if statements.
  * 2021-03-16 -> Applied the ifs and loadfile replacements. Added block functions and statements for the template, including loop.
  * 2021-03-18 -> Applied the setFunction statements, to call functions using a Template syntax on the HTML.
- * 2021-03-19 -> Improved template rendering methods, removing excess of empty spaces between tags. Added the "code" method, which concatenates the given HTML code with the current template/block HTML. Added template data about rendering and memory usage.
+ * 2021-03-19 -> Improved template rendering methods, removing excess of empty spaces between tags. Added the "code" method, which concatenates the given HTML code with the current template/block HTML code. Added template data about rendering and memory usage.
  * 2021-03-22 -> Improved recursive loadFile method to add support with differents DIRECTORY_SEPARATORs. Now it will include the file wheter it is a Windows server os a GNU server.
  * 2021-03-23 -> Improved prepareIfs method to allow underscores (_) on the if definition. Added the prepareDocument method, to remove linebreaks and extra empty spaces on methods that sets code on the HTML. Improved setBlock Method. Improved loadFile method to be able to load multiple files on same HTML string. Improved recursively <_template:block()> parameters
  * 2021-06-06 -> Added $echo to render method, to make the template do the 'echo' of the HTML result
- * 2021-08-13 -> Refactored all block operations. Now it can support multiples blocks
+ * 2021-08-13 -> Refactored all block operations. Now it supports multiples blocks
  * 2021-08-14 -> Refactored function operations
+ * 2021-08-15 -> Refactored all If operations. Not it supports multiples Ifs within multiple Blocks
  * */
 
 class Template
@@ -27,7 +28,7 @@ class Template
 
     private $templateIncludeRegex = "/(?:\<\_template\:loadFile\()(.*?\.html)(?:\)(?: )?(?:\/)?\/>)/"; // this regex loads other child template files inside a template files - it acts recursively
 
-    private $templateVarRegex = "/\<\_template\:(\\$)?\\field(?: )?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will be replaced on the setVar function
+    private $templateVarRegex = "/\<\_template\:(\\$)?\\field( )?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will be replaced on the setVar function
     private $templateVars = array(); // array with defined vars to be set on the template. To define a var you can use: <_template:$var/> <_template:var/> or {{$var}} {{var}}
 
     private $templateIfRegex = "/(?:\<\_template\:if\()((?:(?:\\$)?[a-zA-Z0-9_]+)(?:(?:\:)(?:\\$)?(?:[a-zA-Z0-9_]+))?)(?:\)(?: )?(?:\/)?\>)/"; // this regex is used to prepare the conditions on the template ifs
@@ -196,13 +197,23 @@ class Template
     {
         $condition = explode(":", str_replace("$", "", $condition));
         $code = md5($condition[0]);
-        if (isset($this->templateIfs[$code]) && $this->templateIfs[$code]['condition']['condition'] == $condition[0]) {
-            $this->templateIfs[$code]['condition']['status'] = $bool;
+        if (isset($this->templateIfs[$code])) {
             if (isset($condition[1])) {
                 $childCode = md5($condition[1]);
-                if (isset($this->templateIfs[$code]['childConditions'][$childCode]) && $this->templateIfs[$code]['childConditions'][$childCode]['condition'] == $condition[1]) {
+                if (isset($this->templateIfs[$code]['childConditions'][$childCode])) {
                     $this->templateIfs[$code]['childConditions'][$childCode]['status'] = $bool;
                 }
+                $true = 0;
+                foreach ($this->templateIfs[$code]['childConditions'] as $childCode => $conditions) {
+                    if ($conditions["status"]) {
+                        $true++;
+                    }
+                }
+                if ($true > 0) {
+                    $this->templateIfs[$code]['condition']['status'] = true;
+                }
+            } else {
+                $this->templateIfs[$code]['condition']['status'] = $bool;
             }
         }
         unset($code, $condition, $childCode);
@@ -267,7 +278,10 @@ class Template
             $regex = "/(?:" . $comment . ")(.*?)(?:" . $comment . ")/";
             if (preg_match($regex, $this->HTML, $matches)) {
                 $class = get_class($this);
-                return new $class(array("html" => $matches[1], "dir" => $this->getDir(), "vars" => $this->getVars(), "blockInfo" => array("name" => $name, "code" => $code)));
+                $block = new $class(array("html" => $matches[1], "dir" => $this->getDir(), "vars" => $this->getVars(), "blockInfo" => array("name" => $name, "code" => $code)));
+                $block->templateIfs = $this->templateIfs;
+                $block->templateIfsKeys = $this->templateIfsKeys;
+                return $block;
             } else {
                 return false;
             }
@@ -284,6 +298,8 @@ class Template
             $comment = addslashes("<!-- block:$blockInfo[name] - $blockInfo[code] -->");
             $regex = "/($comment).*?($comment)/";
             $block->unsetBlockLoop();
+            $this->templateIfsKeys = array_merge($this->templateIfsKeys, $block->templateIfsKeys);
+            $this->templateIfs = array_merge($this->templateIfs, $block->templateIfs);
             if (isset($block->templateCurrentBlock['rendered'])) {
                 $this->HTML = preg_replace($regex, "\\1" . implode("", $block->templateCurrentBlock['rendered']) . "\\2", $this->HTML);
             } else {
@@ -299,6 +315,8 @@ class Template
             }
             $class = get_class($this);
             $new = new $class(array("vars" => $this->getVars(), "dir" => $this->getDir(), "html" => $this->rawRender()));
+            $new->templateIfsKeys = $this->templateIfsKeys;
+            $new->templateIfs = $this->templateIfs;
             $this->templateCurrentBlock['rendered'][] = $new->register()->rawRender();
             return $this;
         }
@@ -329,7 +347,6 @@ class Template
     public function unsetBlockLoop()
     {
         $this->templateBlockLoop = false;
-        $this->prepareDocument();
         return $this;
     }
 
@@ -366,10 +383,11 @@ class Template
                                 return $this->templateVars[$argument];
                             }
                         }
-                        return false;
+                        return $argument;
                     };
                 }
                 try {
+                    $regex = str_replace("\\field", $function, $this->templateFunctionReplaceRegex);
                     if (function_exists($function)) {
                         if ($argument !== "") {
                             $var = $isVar($argument);
@@ -379,14 +397,14 @@ class Template
                         }
                         if ($result) {
                             //$this->HTML = preg_replace($this->templateFunctionReplaceRegex, "\\1", $this->HTML);
-                            $regex = str_replace("\\field", $function, $this->templateFunctionReplaceRegex);
                             $this->HTML = preg_replace($regex, $result, $this->HTML);
                             if (isset($var)) {
                                 $this->setVar(array($var => $result));
                             }
+                        } else {
+                            $this->HTML = preg_replace($regex, "<!-- the function `$function` didn't had any result -->", $this->HTML);
                         }
                     } else {
-                        $regex = str_replace("\\field", $function, $this->templateFunctionReplaceRegex);
                         $function = addSlashes(str_replace(array("<", ">"), array("&lt;", "&gt;"), $function));
                         $this->HTML = preg_replace($regex, "<!-- the function `$function` doesn't exists -->", $this->HTML);
                     }
@@ -481,9 +499,13 @@ class Template
     }
 
     /** This method returns the HTML without any render by the template side */
-    public function rawRender()
+    public function rawRender($echo = false)
     {
-        return $this->HTML;
+        if ($echo) {
+            echo $this->HTML;
+        } else {
+            return $this->HTML;
+        }
     }
 
     /** This method returns the HTML with the template rendering */

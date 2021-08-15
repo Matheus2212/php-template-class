@@ -148,7 +148,7 @@ We can both:
 
 - Set a var with the function output
 - Use the `code` to insert a result of a function
-- Use the template tag to automatically call a function, like this: `<_template:function.time()/>` or this: `<_template:function.time/>` Or even so: `<_template:function.time(1628944040)/>`
+- Use the template tag to automatically call a function, like this: `<_template:function.time()/>` or this: `<_template:function.time/>` Or even so: `<_template:function.date(Y-m-d)/>`
 
 ### One more thing.
 

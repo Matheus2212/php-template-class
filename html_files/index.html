@@ -4,25 +4,21 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{title}}</title> <!-- One method for var reference -->
+    <title><_template:title/></title> <!-- One method for var reference -->
   </head>
   <body>
 
-    {{$nav}} <!-- Another method for var reference -->
+    {{$na_v}} <!-- Another method for var reference -->
 
     <_template:body_var/> <!-- Another method for var reference -->
 
-    <_template:$footer_var/> <!-- Another method for var reference -->
+    <_template:$footer-var/> <!-- Another method for var reference -->
     
     <_template:block(loop)>
       
     </_template:block>
 
-    <_template:function.time()/>
-    
-    <_template:function.existo()/>
-
-    <_template:function.ucwords(title)/>
+    <_template:function.date(Y-m-d)/>
 
   </body>
 </html>

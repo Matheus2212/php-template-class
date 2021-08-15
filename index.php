@@ -6,8 +6,8 @@ include("template.class.php");
 $variaveis = array(
         "title" => "Meu Título",
         "body_var" => "Meu body",
-        "nav" => "Menu",
-        "footer_var" => "Footer"
+        "na_v" => "Menu",
+        "footer-var" => "Footer"
 );
 
 $layout = new Template(array("dir" => "html_files", "file" => "index.html", "vars" => $variaveis));
@@ -15,15 +15,17 @@ $layout = new Template(array("dir" => "html_files", "file" => "index.html", "var
 $block = $layout->getBlock("loop");
 
 if ($block) {
-        
+
         $block->loadFile("block.html")->setBlockLoop();
+        $block->setIf("hasVar:father", true);
         for ($i = 0; $i < 10; $i++) {
                 $block->setBlock(array("i" => $i));
                 $childBlock = $block->getBlock("childBlock");
-                if($childBlock){
-                        $childBlock->code("My new code here");
+                if ($childBlock) {
+                        $childBlock->setIf("hasVar:child",true);
+                        //$childBlock->setIf("hasVar", false);
+                        $block->setBlock($childBlock);
                 }
-                $block->setBlock($childBlock);
         }
         $layout->setBlock($block);
 }

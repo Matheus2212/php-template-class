@@ -2,6 +2,18 @@
         <input type="text" name="{{i}}" placeholder="{{i}}"/>
 </div>
 
-<_template:if(hasVar)>
+<_template:if(hasVar:father)>
         Some code here.
+
+        <_template:block(childBlock)>
+        Here's some <b>child block</b>
+
+        <_template:if(hasVar:child)>
+
+        Some child condition
+
+                </_template:if>
+
+        </_template:block>
+
 </_template:if>
