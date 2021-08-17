@@ -6,19 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title><_template:title/></title> <!-- One method for var reference -->
   </head>
-  <body>
-
-    {{$na_v}} <!-- Another method for var reference -->
-
-    <_template:body_var/> <!-- Another method for var reference -->
-
-    <_template:$footer-var/> <!-- Another method for var reference -->
-    
+  <body>    
     <_template:block(loop)>
-      
+      <_template:loadFile(block.html)/>
     </_template:block>
 
-    <_template:function.date(Y-m-d)/>
+    <_template:function.ucwords({{title}})/>
 
   </body>
 </html>

@@ -1,31 +1,24 @@
 <?php
 
-header("Content-type:text/html");
-include("template.class.php");
+// verificar IF
 
-$variaveis = array(
-        "title" => "Meu Título",
-        "body_var" => "Meu body",
-        "na_v" => "Menu",
-        "footer-var" => "Footer"
+header("Content-type:text/html");
+require "template.class.php";
+
+$vars = array(
+        "title" => "php template engine",
 );
 
-$layout = new Template(array("dir" => "html_files", "file" => "index.html", "vars" => $variaveis));
-
-$block = $layout->getBlock("loop");
-
+$layout = new Template();
+$layout->setDir("./html_files");
+$layout->loadFile("index.html");
+//$layout->setVar($vars);
+$layout->setIf("hasVar", true);
+$block = $layout->getBlock("childBlock");
 if ($block) {
-
-        $block->loadFile("block.html")->setBlockLoop();
-        $block->setIf("hasVar:father", true);
-        for ($i = 0; $i < 10; $i++) {
+        $block->setBlockLoop();
+        for ($i = 0; $i < 8; $i++) {
                 $block->setBlock(array("i" => $i));
-                $childBlock = $block->getBlock("childBlock");
-                if ($childBlock) {
-                        $childBlock->setIf("hasVar:child",true);
-                        //$childBlock->setIf("hasVar", false);
-                        $block->setBlock($childBlock);
-                }
         }
         $layout->setBlock($block);
 }

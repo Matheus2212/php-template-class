@@ -128,7 +128,8 @@ $vars = array(
 $layout->setIf("hasVar",(isset($vars)));
 ```
 
-Wow, simple... Thats just it? Yes.
+Wow, simple... Thats just it? Yes. We can also unset IFs, calling the `unsetIf("name")` method. 
+We can also set an IF to `false`, and then the IF will be removed. Oh yeah, if you're using IFs within BLOCKs, **be sure to set an if to false AFTER the block is setted on the main instance**
 
 ### I want to add a custom code there. How can I do it?
 

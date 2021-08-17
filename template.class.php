@@ -14,7 +14,8 @@
  * 2021-06-06 -> Added $echo to render method, to make the template do the 'echo' of the HTML result
  * 2021-08-13 -> Refactored all block operations. Now it supports multiples blocks
  * 2021-08-14 -> Refactored function operations
- * 2021-08-15 -> Refactored all If operations. Not it supports multiples Ifs within multiple Blocks
+ * 2021-08-15 -> Refactored all If operations. Now it supports multiples Ifs within multiple Blocks
+ * 2021-08-16 -> Improved even more the If operations. Now it removes even when there's no IF used
  * */
 
 class Template
@@ -180,6 +181,10 @@ class Template
                         $replace = $comment . "\\1" . $comment;
                         $this->HTML = preg_replace($regex, $replace, $this->HTML);
                     }
+                    $comment = "<!-- " . $condition["condition"] . " - $code -->";
+                    $regex = str_replace("{condition}", "(?:\\$)?" . addslashes($condition["condition"]), $this->templatePrepareIfRegex);
+                    $replace = $comment . "\\1" . $comment;
+                    $this->HTML = preg_replace($regex, $replace, $this->HTML);
                 } else {
                     $comment = "<!-- $condition - $code -->";
                     $regex = str_replace("{condition}", "(?:\\$)?" . addslashes($condition), $this->templatePrepareIfRegex);
@@ -226,7 +231,7 @@ class Template
         $this->prepareIfs();
         foreach ($this->templateIfsKeys as $code => $condition) {
             if (is_string($condition)) {
-                if (!$this->templateIfs[$code]['condition']['status']) {
+                if (!isset($this->templateIfs[$code]['condition']['status']) || !$this->templateIfs[$code]['condition']['status']) {
                     $comment = addslashes("<!-- $condition - $code -->");
                     $this->HTML = preg_replace("/" . $comment . ".*?" . $comment . "/", "", $this->HTML);
                 } else {
@@ -242,6 +247,10 @@ class Template
                         $comment = "<!-- $condition[condition]:$childCondition - $code:$childCode -->";
                         $this->HTML = preg_replace("/" . addslashes($comment) . "/", "", $this->HTML);
                     }
+                }
+                if (!isset($this->templateIfs[$code]['condition']['status']) || !$this->templateIfs[$code]['condition']['status']) {
+                    $comment = addslashes("<!-- " . $condition["condition"] . " - $code -->");
+                    $this->HTML = preg_replace("/" . $comment . ".*?" . $comment . "/", "", $this->HTML);
                 }
             }
         }
@@ -300,8 +309,10 @@ class Template
             $block->unsetBlockLoop();
             $this->templateIfsKeys = array_merge($this->templateIfsKeys, $block->templateIfsKeys);
             $this->templateIfs = array_merge($this->templateIfs, $block->templateIfs);
-            if (isset($block->templateCurrentBlock['rendered'])) {
+            if (isset($block->templateCurrentBlock['rendered']) && is_array($block->templateCurrentBlock['rendered'])) {
                 $this->HTML = preg_replace($regex, "\\1" . implode("", $block->templateCurrentBlock['rendered']) . "\\2", $this->HTML);
+            } else if (isset($block->templateCurrentBlock['rendered']) && is_string($block->templateCurrentBlock['rendered'])) {
+                $this->HTML = preg_replace($regex, "\\1" . $block->templateCurrentBlock['rendered'] . "\\2", $this->HTML);
             } else {
                 $this->HTML = preg_replace($regex, "\\1" . $block->rawRender() . "\\2", $this->HTML);
             }
@@ -317,7 +328,11 @@ class Template
             $new = new $class(array("vars" => $this->getVars(), "dir" => $this->getDir(), "html" => $this->rawRender()));
             $new->templateIfsKeys = $this->templateIfsKeys;
             $new->templateIfs = $this->templateIfs;
-            $this->templateCurrentBlock['rendered'][] = $new->register()->rawRender();
+            if ($this->templateBlockLoop) {
+                $this->templateCurrentBlock['rendered'][] = $new->register()->rawRender();
+            } else {
+                $this->templateCurrentBlock['rendered'] = $new->register()->rawRender();
+            }
             return $this;
         }
     }
