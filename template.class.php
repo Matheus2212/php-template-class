@@ -105,8 +105,10 @@ class Template
     public function setVar($data)
     {
         foreach ($data as $field => $value) {
-            $regex = str_replace("\\field", addSlashes($field), $this->templateVarRegex);
-            $this->HTML = preg_replace($regex, $value, $this->HTML);
+            if (!is_array($value)) {
+                $regex = str_replace("\\field", addSlashes($field), $this->templateVarRegex);
+                $this->HTML = preg_replace($regex, $value, $this->HTML);
+            }
         }
         unset($regex);
         $this->prepareDocument();
@@ -309,12 +311,17 @@ class Template
             $block->unsetBlockLoop();
             $this->templateIfsKeys = array_merge($this->templateIfsKeys, $block->templateIfsKeys);
             $this->templateIfs = array_merge($this->templateIfs, $block->templateIfs);
-            if (isset($block->templateCurrentBlock['rendered']) && is_array($block->templateCurrentBlock['rendered'])) {
-                $this->HTML = preg_replace($regex, "\\1" . implode("", $block->templateCurrentBlock['rendered']) . "\\2", $this->HTML);
-            } else if (isset($block->templateCurrentBlock['rendered']) && is_string($block->templateCurrentBlock['rendered'])) {
-                $this->HTML = preg_replace($regex, "\\1" . $block->templateCurrentBlock['rendered'] . "\\2", $this->HTML);
+            if ($block === $this) {
+                //$this->HTML = preg_replace($regex, "\\1" . implode("", $block->templateCurrentBlock['rendered']) . "\\2", $this->HTML);
+                $this->HTML = implode("", $block->templateCurrentBlock['rendered']);
             } else {
-                $this->HTML = preg_replace($regex, "\\1" . $block->rawRender() . "\\2", $this->HTML);
+                if (isset($block->templateCurrentBlock['rendered']) && is_array($block->templateCurrentBlock['rendered'])) {
+                    $this->HTML = preg_replace($regex, "\\1" . implode("", $block->templateCurrentBlock['rendered']) . "\\2", $this->HTML);
+                } else if (isset($block->templateCurrentBlock['rendered']) && is_string($block->templateCurrentBlock['rendered'])) {
+                    $this->HTML = preg_replace($regex, "\\1" . $block->templateCurrentBlock['rendered'] . "\\2", $this->HTML);
+                } else {
+                    $this->HTML = preg_replace($regex, "\\1" . $block->rawRender() . "\\2", $this->HTML);
+                }
             }
             $this->prepareDocument();
             unset($block);
@@ -428,6 +435,14 @@ class Template
                 }
             }
         }
+    }
+
+    /** This method concatenates pre-code on the current template instance */
+    public function precode($code)
+    {
+        $this->HTML = $code . $this->HTML;
+        $this->prepareDocument();
+        return $this;
     }
 
     /** This method concatenates code on the current template instance */
