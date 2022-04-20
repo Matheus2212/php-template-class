@@ -454,7 +454,7 @@ class Template
     }
 
     /** This method gets the contents of the given file. If $raw == true then it will return the raw HTML code */
-    public function loadFile($filePath = false, $raw = false)
+    public function loadFile($filePath = false, $raw = false, $var = false)
     {
         if ($filePath) {
             $filePath = preg_replace("/\/{1,}|\\{1,}/", DIRECTORY_SEPARATOR, $filePath);
@@ -464,8 +464,8 @@ class Template
             }
             $path = $instance->templateDir . $filePath;
             if (file_exists($path)) {
-                $instance->HTML = file_get_contents($path);
-                if (preg_match_all($this->templateIncludeRegex, $instance->HTML, $matches)) {
+                $HTML = file_get_contents($path);
+                if (preg_match_all($this->templateIncludeRegex, $HTML, $matches)) {
                     $matches = $matches[1];
                     $class = get_class($instance);
                     foreach ($matches as $match) {
@@ -479,10 +479,17 @@ class Template
                         unset($data);
                         $fileName = explode(DIRECTORY_SEPARATOR, $fileName);
                         $fileName = $fileName[count($fileName) - 1];
-                        $instance->HTML = preg_replace("/\<\_template\:loadFile\(.*?" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $instance->HTML);
+                        $HTML = preg_replace("/\<\_template\:loadFile\(.*?" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $HTML);
                         unset($childNode, $aux, $fileName);
                     }
                 }
+                if ($var) {
+                    $instance->setVar([$var => $HTML]);
+                    $instance->prepareDocument();
+                } else {
+                    $instance->HTML = $HTML;
+                }
+                unset($HTML);
                 if ($raw) {
                     return $instance->rawRender();
                 }

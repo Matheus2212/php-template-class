@@ -7,11 +7,11 @@
     <title><_template:title/></title> <!-- One method for var reference -->
   </head>
   <body>    
-    <_template:block(loop)>
-      <_template:loadFile(block.html)/>
-    </_template:block>
+    <span style="display:block;text-align:right"><_template:title/></span>
 
-    <_template:function.ucwords({{title}})/>
 
+    <p style="color:{{cor}}">Sou um parágrafo</p>
   </body>
 </html>
+
+
