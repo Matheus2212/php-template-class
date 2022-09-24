@@ -25,11 +25,11 @@ class Template
     private $templateDir = ""; // this is the directory where the template files are stored
     private $HTML = "";
 
-    private $templatePrepareDocumentRegex = "/|\r|\n|[ ]{2,}/"; // this regex will remove all line-breaks and extra empty spaces on the document. 
+    private $templatePrepareDocumentRegex = "/|\r|\n|[\s]{2,}/"; // this regex will remove all line-breaks and extra empty spaces on the document. 
 
-    private $templateIncludeRegex = "/(?:\<\_template\:loadFile\()(.*?\.html)(?:\)(?: )?(?:\/)?\/>)/"; // this regex loads other child template files inside a template files - it acts recursively
+    private $templateIncludeRegex = "/(?:\<\_template\:loadFile\()(.*?\.html)(?:\)(?:\s)?(?:\/)?\/>)/"; // this regex loads other child template files inside a template files - it acts recursively
 
-    private $templateVarRegex = "/\<\_template\:(\\$)?\\field( )?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will be replaced on the setVar function
+    private $templateVarRegex = "/\<\_template\:(\\$)?\\field(\s)?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will be replaced on the setVar function
     private $templateVars = array(); // array with defined vars to be set on the template. To define a var you can use: <_template:$var/> <_template:var/> or {{$var}} {{var}}
 
     private $templateIfRegex = "/(?:\<\_template\:if\()((?:(?:\\$)?[a-zA-Z0-9_]+)(?:(?:\:)(?:\\$)?(?:[a-zA-Z0-9_]+))?)(?:\)(?: )?(?:\/)?\>)/"; // this regex is used to prepare the conditions on the template ifs
@@ -95,8 +95,14 @@ class Template
     }
 
     /** This will add a $var to $this->templateVars */
-    private function addVar($var, $value)
+    public function addVar($var, $value = false)
     {
+        if (is_array($var)) {
+            foreach ($var as $key => $value) {
+                $this->templateVars[$key] = $value;
+            }
+            return $this;
+        }
         $this->templateVars[$var] = $value;
         return $this;
     }
@@ -302,8 +308,12 @@ class Template
     }
 
     /** This method will set the block on the HTML */
-    public function setBlock($block = false)
+    public function setBlock($block = false, $merge = false)
     {
+        if (!$block) {
+            $this->HTML = implode("", $this->templateCurrentBlock['rendered']);
+            return $this;
+        }
         if ($block instanceof $this) {
             $blockInfo = $block->templateBlockInfos;
             $comment = addslashes("<!-- block:$blockInfo[name] - $blockInfo[code] -->");
@@ -311,6 +321,7 @@ class Template
             $block->unsetBlockLoop();
             $this->templateIfsKeys = array_merge($this->templateIfsKeys, $block->templateIfsKeys);
             $this->templateIfs = array_merge($this->templateIfs, $block->templateIfs);
+
             if ($block === $this) {
                 //$this->HTML = preg_replace($regex, "\\1" . implode("", $block->templateCurrentBlock['rendered']) . "\\2", $this->HTML);
                 $this->HTML = implode("", $block->templateCurrentBlock['rendered']);
@@ -328,6 +339,10 @@ class Template
             return $this;
         }
         if (is_array($block)) {
+            if ($merge && is_array($merge)) {
+                $block = array_merge($block, $merge);
+                unset($merge);
+            }
             foreach ($block as $key => $value) {
                 $this->addVar($key, $value);
             }
@@ -485,7 +500,6 @@ class Template
                 }
                 if ($var) {
                     $instance->setVar([$var => $HTML]);
-                    $instance->prepareDocument();
                 } else {
                     $instance->HTML = $HTML;
                 }
