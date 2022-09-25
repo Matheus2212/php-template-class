@@ -1,7 +1,7 @@
 <?php
 
 /** 
- * PHP Template class - developed with love by Matheus Felipe Marques
+ * PHP Template class - made with love by Matheus2212
  * 
  * CHANGELOG
  * 2021-02-15 -> Class created.
@@ -16,6 +16,7 @@
  * 2021-08-14 -> Refactored function operations
  * 2021-08-15 -> Refactored all If operations. Now it supports multiples Ifs within multiple Blocks
  * 2021-08-16 -> Improved even more the If operations. Now it removes even when there's no IF used
+ * 2022-09-25 -> Renamed Class for better use with PHPUnit. Also fixed regex with empty spaces to use \s
  * */
 
 class Template
@@ -32,20 +33,20 @@ class Template
     private $templateVarRegex = "/\<\_template\:(\\$)?\\field(\s)?(\/)?\>|\{\{(:?\\$)?\\field\}\}/"; // \\field will be replaced on the setVar function
     private $templateVars = array(); // array with defined vars to be set on the template. To define a var you can use: <_template:$var/> <_template:var/> or {{$var}} {{var}}
 
-    private $templateIfRegex = "/(?:\<\_template\:if\()((?:(?:\\$)?[a-zA-Z0-9_]+)(?:(?:\:)(?:\\$)?(?:[a-zA-Z0-9_]+))?)(?:\)(?: )?(?:\/)?\>)/"; // this regex is used to prepare the conditions on the template ifs
+    private $templateIfRegex = "/(?:\<\_template\:if\()((?:(?:\\$)?[a-zA-Z0-9_]+)(?:(?:\:)(?:\\$)?(?:[a-zA-Z0-9_]+))?)(?:\)(?:\s)?(?:\/)?\>)/"; // this regex is used to prepare the conditions on the template ifs
     private $templatePrepareIfRegex = "/(?:\<\_template\:if\({condition}\)\>)(.*?)(?:\<\/\_template\:if\>)/"; // this regex also is used to prepare the conditions on the template ifs
     private $templateIfsKeys = array(); // array with the "ifs" keys on the template file
     private $templateIfs = array(); // array with the "ifs" keys on the template file
 
     private $templateBlockRegex = "/(?:\<\_template\:block\()([a-zA-Z0-9_+]{1,})\)\>/"; // this regex will set the blocks inside the document
-    private $templatePrepareBlockRegex = "/(?:\<\_template\:block\({condition}\)\>)(.*?)(\<\/\_template\:block(?: )?\>)/"; // this regex will set the blocks HTML comments on the document
+    private $templatePrepareBlockRegex = "/(?:\<\_template\:block\({condition}\)\>)(.*?)(\<\/\_template\:block(?:\s)?\>)/"; // this regex will set the blocks HTML comments on the document
     private $templateBlocksKeys = array(); // array where will be stored the block keys and names
     private $templateBlockInfos = array(); // this array stores data about de current block
     private $templateCurrentBlock = null; // this var will store the code for the current block in use
     private $templateBlockLoop = null; // this var defines if the current instance is a block and if it is in loop
 
-    private $templateFunctionRegex = "/(?:\<\_template\:function\.)(.*?)(?:\()(.*?)\)(?:(?: )?(?:\/)?\>)/"; // this regex is used to check if the HTML has any function calls
-    private $templateFunctionReplaceRegex = "/(?:\<\_template\:function\.)(?:\\field?)(?:\()?(.*?)(?:\))?(?:(?: )?(?:\/)?\>)/";
+    private $templateFunctionRegex = "/(?:\<\_template\:function\.)(.*?)(?:\()(.*?)\)(?:(?:\s)?(?:\/)?\>)/"; // this regex is used to check if the HTML has any function calls
+    private $templateFunctionReplaceRegex = "/(?:\<\_template\:function\.)(?:\\field?)(?:\()?(.*?)(?:\))?(?:(?:\s)?(?:\/)?\>)/";
 
     /** Will set the basics needs for the class */
     public function __construct($template = false)
@@ -439,7 +440,7 @@ class Template
                                 $this->setVar(array($var => $result));
                             }
                         } else {
-                            $this->HTML = preg_replace($regex, "<!-- the function `$function` didn't had any result -->", $this->HTML);
+                            $this->HTML = preg_replace($regex, "<!-- the function `$function` didn't had an output -->", $this->HTML);
                         }
                     } else {
                         $function = addSlashes(str_replace(array("<", ">"), array("&lt;", "&gt;"), $function));
@@ -494,7 +495,7 @@ class Template
                         unset($data);
                         $fileName = explode(DIRECTORY_SEPARATOR, $fileName);
                         $fileName = $fileName[count($fileName) - 1];
-                        $HTML = preg_replace("/\<\_template\:loadFile\(.*?" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $HTML);
+                        $HTML = preg_replace("/\<\_template\:loadFile\(.*?" . addslashes($fileName) . "\)(\s)?(\/)?\/>/", $childNode->rawRender(), $HTML);
                         unset($childNode, $aux, $fileName);
                     }
                 }
@@ -524,7 +525,7 @@ class Template
                 unset($data);
                 $fileName = explode(DIRECTORY_SEPARATOR, $fileName);
                 $fileName = $fileName[count($fileName) - 1];
-                $instance->HTML = preg_replace("/\<\_template\:loadFile\(.*?" . addslashes($fileName) . "\)( )?(\/)?\/>/", $childNode->rawRender(), $instance->HTML);
+                $instance->HTML = preg_replace("/\<\_template\:loadFile\(.*?" . addslashes($fileName) . "\)(\s)?(\/)?\/>/", $childNode->rawRender(), $instance->HTML);
                 unset($childNode, $aux, $fileName);
             }
             if ($raw) {
@@ -554,9 +555,8 @@ class Template
     {
         if ($echo) {
             echo $this->HTML;
-        } else {
-            return $this->HTML;
         }
+        return $this->HTML;
     }
 
     /** This method returns the HTML with the template rendering */

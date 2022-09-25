@@ -3,7 +3,7 @@
 // verificar IF
 
 header("Content-type:text/html");
-require "template.class.php";
+require "TemplateClass.php";
 
 $vars = array(
         "title" => "PHP Template Engine",

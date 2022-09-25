@@ -1,10 +1,10 @@
 # PHP Template Engine
 
-A PHP Engine for templates. It uses MVC.
+A PHP Template Engine built for MVC.
 
 ## Overview
 
-Simple PHP template engine inspired by PUG.js and My Own experiences.
+Simple PHP template engine inspired by PUG.js and personal experiences.
 
 ---
 
